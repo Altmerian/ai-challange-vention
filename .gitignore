@@ -11,9 +11,14 @@
 # temporary docs
 /docs/archive/
 /docs/prompts/
+**/samples/**
 
 # Playwright
 **/.playwright-cli/
+auth.json
+.pw-profile/
+**/extraction/raw/**
+**/extraction/scripts/**
 
 # temporary files
 *.log

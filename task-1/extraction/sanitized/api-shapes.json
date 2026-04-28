@@ -1,0 +1,48 @@
+[
+  {
+    "kind": "activityCsv",
+    "source": "sanitized leaderboard activity CSV",
+    "shape": {
+      "format": "csv",
+      "headers": [
+        "ActivityExternalId",
+        "EmployeeName",
+        "EmployeeTitle",
+        "EmployeeUnit",
+        "ActivityEndDate",
+        "Email",
+        "ActivityCategory",
+        "Employee GUID",
+        "ActivityPoints",
+        "ActivityTitle"
+      ],
+      "sampleRows": [
+        {
+          "ActivityExternalId": "<STRING>",
+          "EmployeeName": "<STRING>",
+          "EmployeeTitle": "<STRING>",
+          "EmployeeUnit": "<STRING>",
+          "ActivityEndDate": "<STRING>",
+          "Email": "<STRING>",
+          "ActivityCategory": "<STRING>",
+          "Employee GUID": "<STRING>",
+          "ActivityPoints": 0,
+          "ActivityTitle": "<STRING>"
+        },
+        {
+          "ActivityExternalId": "<STRING>",
+          "EmployeeName": "<STRING>",
+          "EmployeeTitle": "<STRING>",
+          "EmployeeUnit": "<STRING>",
+          "ActivityEndDate": "<STRING>",
+          "Email": "<STRING>",
+          "ActivityCategory": "<STRING>",
+          "Employee GUID": "<STRING>",
+          "ActivityPoints": 0,
+          "ActivityTitle": "<STRING>"
+        }
+      ],
+      "rowCountApprox": 479
+    }
+  }
+]

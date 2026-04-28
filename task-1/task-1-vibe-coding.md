@@ -12,7 +12,7 @@ The first task is here to ease you in. You'll be exploring so-called 'vibe codin
 
 The task is very straightforward — you need to create a copy of our internal [Company leaderboard](https://ventionteamsinc.sharepoint.com/sites/edu/SitePages/CompanyLeaderBoard.aspx).
 
-⚠️ **Important:** Do not feed any corporate data — real names, photos, or any other personal information — into AI tools. Make sure to complete the task in a way that complies with our **responsible AI usage policies**.
+⚠️ **Important:** Do not feed any corporate data — real names, photos, or any other personal information — into AI tools. Make sure to complete the task in a way that complies with our [responsible AI usage policies](https://ventionteamsinc.sharepoint.com/SitePages/AI-Usage-Policies.aspx).
 
 ## Requirements
 
