@@ -1,0 +1,22 @@
+# AI tools and docs
+/_bmad/*
+/_bmad/_config/*
+/.vscode/
+/.claude/*
+/.cursor/*
+/.github/*
+/.codex/*
+/.agents/*
+
+# temporary docs
+/docs/archive/
+/docs/prompts/
+
+# Playwright
+**/.playwright-cli/
+
+# temporary files
+*.log
+.DS_Store
+*.tmp
+*.bak
