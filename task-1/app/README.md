@@ -28,4 +28,8 @@ The Vite `base` is set to `/ai-challenge-vention/` to match the deploy target re
 
 ## Overview
 
-Story 1.1 establishes the build foundation: a TypeScript React/Vite app with a single leaderboard root section rendered. Subsequent stories layer privacy-safe synthetic data, the derivation pipeline, the full leaderboard UI, filters/search, row expansion, and GitHub Pages deployment.
+A complete static React 19 + Vite 8 + TypeScript SPA that clones the internal company leaderboard with synthetic data only. Features a header, year/quarter/category filter dropdowns, local employee search, a top-three podium, a ranked list of ~200 employees grouped from ~450 synthetic activity records, and per-row expansion into an activity details table.
+
+All data is generated at build time (Faker for records, DiceBear for deterministic SVG avatars) and bundled as static JSON under `src/data/`. The runtime makes no network calls — no backend, no router, no persistence, no analytics, no external data APIs. Filtering, search, scoring, grouping, sorting, and row expansion all run client-side from a single pure derivation pipeline.
+
+Deploys to GitHub Pages via the `.github/workflows/deploy-task-1-pages.yml` workflow on pushes to `main` that touch `task-1/app/**`.
