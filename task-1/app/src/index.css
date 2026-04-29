@@ -1,4 +1,546 @@
+:root {
+  --color-bg: rgb(248, 250, 252);
+  --color-surface: rgb(255, 255, 255);
+  --color-text: rgb(15, 23, 42);
+  --color-muted: rgb(100, 116, 139);
+  --color-rank: rgb(148, 163, 184);
+  --color-border: rgb(226, 232, 240);
+  --color-divider: rgb(226, 232, 240);
+  --color-accent: rgb(14, 165, 233);
+  --color-accent-soft: rgb(241, 245, 249);
+  --color-gold: rgb(234, 179, 8);
+  --color-gold-soft: rgb(254, 249, 195);
+  --color-gold-border: rgb(253, 224, 71);
+  --color-silver: rgb(148, 163, 184);
+  --color-bronze: rgb(217, 119, 6);
+  --color-podium-block-1: linear-gradient(rgb(254, 243, 199), rgb(253, 230, 138));
+  --color-podium-block-2: linear-gradient(rgb(241, 245, 249), rgb(226, 232, 240));
+  --color-podium-block-3: linear-gradient(rgb(254, 235, 200), rgb(253, 211, 144));
+
+  --shadow-row: rgba(0, 0, 0, 0.1) 0px 1px 3px 0px;
+  --shadow-podium-avatar: rgba(0, 0, 0, 0.15) 0px 4px 12px 0px;
+
+  --font-family:
+    "Segoe UI", -apple-system, "system-ui", Roboto, Oxygen, Ubuntu, Cantarell,
+    "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
-  font-family: system-ui, sans-serif;
+  font-family: var(--font-family);
+  font-size: 14px;
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
+button {
+  font: inherit;
+}
+
+img {
+  display: block;
+}
+
+/* Root */
+
+.leaderboardRoot {
+  max-width: 1204px;
+  margin: 0 auto;
+  padding: 24px;
+  background: var(--color-bg);
+}
+
+/* Header */
+
+.leaderboardHeader__title {
+  margin: 0 0 8px;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.leaderboardHeader__subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-muted);
+}
+
+/* Toolbar shell (Story 1.5 owns behavior) */
+
+.toolbarShell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin: 28px 0 24px;
+}
+
+.toolbarShell__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.toolbarShell__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+  padding: 6px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.toolbarShell__filterLabel {
+  flex: 1;
+}
+
+.toolbarShell__search {
+  position: relative;
+  flex: 1 1 300px;
+  display: flex;
+  align-items: center;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0 12px;
+}
+
+.toolbarShell__searchIcon {
+  color: var(--color-muted);
+  margin-right: 8px;
+}
+
+.toolbarShell__searchInput {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  padding: 8px 0;
+  font-size: 14px;
+  color: var(--color-text);
+  outline: none;
+}
+
+.toolbarShell__searchInput::placeholder {
+  color: var(--color-muted);
+}
+
+/* Podium */
+
+.podium {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+  gap: 16px;
+  margin: 16px 0 32px;
+}
+
+.podiumCard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 8px 0;
+  text-align: center;
+}
+
+.podiumCard__avatarWrap {
+  position: relative;
+}
+
+.podiumCard__avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 4px solid var(--color-gold-border);
+  background: var(--color-surface);
+  object-fit: cover;
+  box-shadow: var(--shadow-podium-avatar);
+}
+
+.podiumCard--rank2 .podiumCard__avatar {
+  width: 88px;
+  height: 88px;
+  border-color: var(--color-silver);
+}
+
+.podiumCard--rank3 .podiumCard__avatar {
+  width: 80px;
+  height: 80px;
+  border-color: var(--color-bronze);
+}
+
+.podiumCard__avatar--empty {
+  background: var(--color-accent-soft);
+}
+
+.podiumCard__rankBadge {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid var(--color-surface);
+  background: var(--color-gold);
+  color: var(--color-surface);
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.podiumCard--rank2 .podiumCard__rankBadge {
+  background: var(--color-silver);
+}
+
+.podiumCard--rank3 .podiumCard__rankBadge {
+  background: var(--color-bronze);
+}
+
+.podiumCard__name {
+  margin: 18px 0 4px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.podiumCard--rank1 .podiumCard__name {
+  font-size: 22px;
+}
+
+.podiumCard__role {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--color-muted);
+  overflow-wrap: break-word;
+}
+
+.podiumCard__block {
+  width: 100%;
+  margin-top: 12px;
+  border-radius: 12px 12px 0 0;
+  border-top: 2px solid var(--color-gold-border);
+  background: var(--color-podium-block-1);
+  height: 80px;
+}
+
+.podiumCard--rank2 .podiumCard__block {
+  height: 56px;
+  border-top-color: var(--color-silver);
+  background: var(--color-podium-block-2);
+}
+
+.podiumCard--rank3 .podiumCard__block {
+  height: 40px;
+  border-top-color: var(--color-bronze);
+  background: var(--color-podium-block-3);
+}
+
+/* Score display */
+
+.scoreDisplay {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.scoreDisplay--podium {
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--color-gold-border);
+  background: var(--color-gold-soft);
+  color: var(--color-bronze);
+  font-size: 18px;
+}
+
+.scoreDisplay--row {
+  font-size: 20px;
+  color: var(--color-text);
+}
+
+.scoreDisplay__icon {
+  flex-shrink: 0;
+  color: var(--color-gold);
+}
+
+/* List */
+
+.leaderboardList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Row */
+
+.leaderboardRow {
+  display: grid;
+  grid-template-columns: 32px 56px minmax(0, 1fr) auto auto 36px;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 24px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-row);
+}
+
+.leaderboardRow__rank {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-rank);
+  text-align: center;
+}
+
+.leaderboardRow__avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--color-accent-soft);
+}
+
+.leaderboardRow__avatar--empty {
+  background: var(--color-accent-soft);
+}
+
+.leaderboardRow__identity {
+  min-width: 0;
+}
+
+.leaderboardRow__name {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.leaderboardRow__role {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--color-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Category stats */
+
+.categoryStats {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.categoryStats--empty {
+  width: 0;
+}
+
+.categoryStat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: var(--color-muted);
+  min-width: 24px;
+}
+
+.categoryStat__icon {
+  flex-shrink: 0;
+}
+
+.categoryStat__count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* Score column divider on row */
+
+.leaderboardRow .scoreDisplay--row {
+  padding-left: 16px;
+  border-left: 1px solid var(--color-divider);
+}
+
+/* Expand button */
+
+.expandButton {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.expandButton__chevron {
+  flex-shrink: 0;
+}
+
+/* List wrapper roles */
+
+.leaderboardList[role="list"] > [role="listitem"] {
+  display: block;
+}
+
+/* Mobile */
+
+@media (max-width: 720px) {
+  .leaderboardRoot {
+    padding: 16px;
+  }
+  .leaderboardHeader__title {
+    font-size: 24px;
+  }
+  .toolbarShell {
+    margin: 20px 0 16px;
+    gap: 8px;
+  }
+  .toolbarShell__filters {
+    width: 100%;
+  }
+  .toolbarShell__filter {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
+  }
+  .toolbarShell__search {
+    flex-basis: 100%;
+  }
+  .podium {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .podiumCard {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    text-align: left;
+  }
+  .podiumCard__avatarWrap {
+    grid-column: 1;
+  }
+  .podiumCard__name,
+  .podiumCard__role {
+    grid-column: 2;
+  }
+  .podiumCard__name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .podiumCard__role {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .podiumCard .scoreDisplay--podium {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    align-self: center;
+    padding: 4px 12px;
+    font-size: 16px;
+  }
+  .podiumCard__name {
+    margin: 0;
+    font-size: 17px;
+  }
+  .podiumCard--rank1 .podiumCard__name {
+    font-size: 18px;
+  }
+  .podiumCard__role {
+    margin: 2px 0 6px;
+  }
+  .podiumCard__block {
+    display: none;
+  }
+  .podiumCard__avatar,
+  .podiumCard--rank2 .podiumCard__avatar,
+  .podiumCard--rank3 .podiumCard__avatar {
+    width: 64px;
+    height: 64px;
+  }
+  .podiumCard__rankBadge {
+    width: 28px;
+    height: 28px;
+    font-size: 13px;
+    border-width: 2px;
+  }
+  .leaderboardRow {
+    grid-template-columns: 28px 48px minmax(0, 1fr) 36px;
+    grid-template-rows: auto auto auto;
+    gap: 6px 12px;
+    padding: 12px 14px;
+  }
+  .leaderboardRow__rank {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    font-size: 18px;
+  }
+  .leaderboardRow__avatar {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    width: 48px;
+    height: 48px;
+  }
+  .leaderboardRow__identity {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .leaderboardRow .expandButton {
+    grid-column: 4;
+    grid-row: 1 / span 2;
+    align-self: center;
+    justify-self: end;
+  }
+  .categoryStats {
+    grid-column: 3;
+    grid-row: 2;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .categoryStat {
+    flex-direction: row;
+    gap: 4px;
+  }
+  .leaderboardRow .scoreDisplay--row {
+    grid-column: 1 / span 4;
+    grid-row: 3;
+    margin-top: 6px;
+    padding: 6px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--color-divider);
+    font-size: 18px;
+    justify-self: end;
+  }
 }

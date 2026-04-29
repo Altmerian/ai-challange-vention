@@ -1,7 +1,12 @@
+import { LeaderboardWidget } from "./components/LeaderboardWidget";
+import {
+  activityRecords,
+  avatarByEmployeeGuid,
+} from "./data/leaderboardData";
+import { deriveLeaderboard } from "./utils/leaderboard";
+
+const employees = deriveLeaderboard(activityRecords, avatarByEmployeeGuid);
+
 export default function App() {
-  return (
-    <section className="leaderboard_root" aria-label="Leaderboard">
-      <h2>Leaderboard</h2>
-    </section>
-  );
+  return <LeaderboardWidget employees={employees} />;
 }
