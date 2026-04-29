@@ -117,7 +117,7 @@ type LeaderboardPerson = {
 };
 ```
 
-Use approximately the extracted scale for realism: about 479 activity records grouped into about 227 employees. Sort by descending total score after grouping.
+Use approximately the extracted scale for realism: about 450 activity records grouped into about 200 employees. Sort by descending total score after grouping.
 
 ### 3. Faker + DiceBear
 

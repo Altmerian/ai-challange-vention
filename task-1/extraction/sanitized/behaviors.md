@@ -5,14 +5,14 @@
 - Widget root selector: `section[class^="leaderboard_"]`.
 - Main data source: `/sites/edu/Shared%20Documents/EDU%20LeaderBoard/LeaderBoardData25_Final%209.csv`.
 - CSV columns: `ActivityExternalId`, `EmployeeName`, `EmployeeTitle`, `EmployeeUnit`, `ActivityEndDate`, `Email`, `ActivityCategory`, `Employee GUID`, `ActivityPoints`, `ActivityTitle`.
-- Observed CSV row count: 479 activity records.
-- Observed rendered row count: 227 employees.
+- Implementation target CSV scale: about 450 synthetic activity records.
+- Implementation target rendered scale: about 200 synthetic employees.
 - React data model should group CSV rows by employee identity, keep employee display fields from the grouped rows, sum `ActivityPoints` for total score, and derive per-category counts/rows from `ActivityCategory`.
 
 ## Dropdowns
 
 - All three filters are custom Fluent UI dropdowns: `role="combobox"` trigger plus `role="listbox"` popup, not native `<select>`.
-- Years dropdown: 2 options. Selecting the second option kept 227 rendered employees. No data/network request fired.
+- Years dropdown: 2 options. Selecting the second option kept the rendered employee list populated. No data/network request fired.
 - Quarters dropdown: 5 options. Selecting the second option reduced rendered employees to 56. No data/network request fired.
 - Categories dropdown: 4 options. Selecting the second option reduced rendered employees to 125. No data/network request fired.
 - Open popups had `transitionDuration: 0s` and `animationDuration: 0s`; no visible animation timing was detected.
@@ -21,7 +21,7 @@
 ## Search
 
 - Search input is inside the leaderboard root and has `role="searchbox"`.
-- Search is client-side. A rare query reduced rendered employees from 227 to 0 and fired no network requests after the page was idle.
+- Search is client-side. A rare query reduced the rendered employee list to 0 and fired no network requests after the page was idle.
 - No debounce-backed API call was detected. Filtering appears local against already loaded data.
 
 ## Rows
