@@ -1,0 +1,31 @@
+{
+  "name": "task-1-leaderboard",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@11.13.0",
+  "engines": {
+    "node": ">=22.12 <23"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit",
+    "generate:data": "node scripts/generate-leaderboard-data.mjs"
+  },
+  "dependencies": {
+    "react": "19.2.5",
+    "react-dom": "19.2.5"
+  },
+  "devDependencies": {
+    "@dicebear/collection": "9.4.2",
+    "@dicebear/core": "9.4.2",
+    "@faker-js/faker": "10.4.0",
+    "@types/node": "22.19.17",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.1",
+    "typescript": "6.0.3",
+    "vite": "8.0.10"
+  }
+}

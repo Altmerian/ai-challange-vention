@@ -1,6 +1,7 @@
 # AI tools and docs
 /_bmad/*
 /_bmad/_config/*
+/_bmad-output/**
 /.vscode/
 /.claude/*
 /.cursor/*
