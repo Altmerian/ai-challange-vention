@@ -14,7 +14,7 @@
 - All three filters are custom Fluent UI dropdowns: `role="combobox"` trigger plus `role="listbox"` popup, not native `<select>`.
 - Years dropdown: 2 options. Selecting the second option kept the rendered employee list populated. No data/network request fired.
 - Quarters dropdown: 5 options. Selecting the second option reduced rendered employees to 56. No data/network request fired.
-- Categories dropdown: 4 options. Selecting the second option reduced rendered employees to 125. No data/network request fired.
+- Categories dropdown: 4 observed source options, with `All Categories` as the first/default option. Selecting the second option reduced rendered employees to 125. No data/network request fired.
 - Open popups had `transitionDuration: 0s` and `animationDuration: 0s`; no visible animation timing was detected.
 - Sanitized listbox DOM files: `dropdown-years.html`, `dropdown-quarters.html`, `dropdown-categories.html`.
 

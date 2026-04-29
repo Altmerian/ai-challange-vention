@@ -30,6 +30,14 @@ export function ChevronDownIcon(props: IconProps) {
   );
 }
 
+export function ChevronUpIcon(props: IconProps) {
+  return (
+    <svg {...baseSvgProps} {...props}>
+      <polyline points="18 15 12 9 6 15" />
+    </svg>
+  );
+}
+
 export function SearchIcon(props: IconProps) {
   return (
     <svg {...baseSvgProps} {...props}>

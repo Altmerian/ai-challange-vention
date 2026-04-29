@@ -9,6 +9,11 @@ import {
   getAvailableYears,
   getQuarterFromDate,
 } from "./leaderboard";
+import {
+  getCategoryFilterOptions,
+  getQuarterFilterOptions,
+  getYearFilterOptions,
+} from "./filterOptions";
 
 const A_GUID = "guid-a";
 const B_GUID = "guid-b";
@@ -154,34 +159,45 @@ describe("deriveLeaderboard", () => {
     expect(result.map((e) => e.employeeGuid)).toEqual([A_GUID]);
   });
 
-  it("filters by employee display fields on search without altering scores", () => {
+  it("filters by query across name, title, and unit fields with trim/lowercase", () => {
     const records: ActivityRecord[] = [
       makeRecord({
         ActivityExternalId: "act-1",
         "Employee GUID": A_GUID,
-        EmployeeName: "Alice Anderson",
-        EmployeeUnit: "Mobile",
+        EmployeeName: "Uladzislau Marchyk",
+        EmployeeTitle: "Software Engineer",
+        EmployeeUnit: "Platform",
         ActivityPoints: 30,
       }),
       makeRecord({
         ActivityExternalId: "act-2",
         "Employee GUID": A_GUID,
-        EmployeeName: "Alice Anderson",
-        EmployeeUnit: "Mobile",
+        EmployeeName: "Uladzislau Marchyk",
+        EmployeeTitle: "Software Engineer",
+        EmployeeUnit: "Platform",
         ActivityPoints: 20,
       }),
       makeRecord({
         ActivityExternalId: "act-3",
         "Employee GUID": B_GUID,
-        EmployeeName: "Bob Brown",
+        EmployeeName: "Rochelle Hackett",
+        EmployeeTitle: "Senior Engineer",
         EmployeeUnit: "Research",
         ActivityPoints: 100,
       }),
+      makeRecord({
+        ActivityExternalId: "act-4",
+        "Employee GUID": C_GUID,
+        EmployeeName: "Lillie Nikolaus-Gerhold",
+        EmployeeTitle: "Architect",
+        EmployeeUnit: "Mobile",
+        ActivityPoints: 90,
+      }),
     ];
-    const result = deriveLeaderboard(records, avatars, { searchQuery: "  AL  " });
-    expect(result).toHaveLength(1);
-    expect(result[0].employeeGuid).toBe(A_GUID);
-    expect(result[0].totalScore).toBe(50);
+    const result = deriveLeaderboard(records, avatars, { searchQuery: "  RCH  " });
+    // Multi-field haystack matches: B (Research), C (Architect), A (Marchyk).
+    expect(result.map((e) => e.employeeGuid)).toEqual([B_GUID, C_GUID, A_GUID]);
+    expect(result.find((e) => e.employeeGuid === A_GUID)?.totalScore).toBe(50);
   });
 
   it("sorts employees by descending score and assigns 1-based ranks deterministically", () => {
@@ -253,5 +269,38 @@ describe("filter helpers", () => {
     expect(getQuarterFromDate("2025-09-30")).toBe("Q3");
     expect(getQuarterFromDate("2025-10-01")).toBe("Q4");
     expect(getQuarterFromDate("2025-12-31")).toBe("Q4");
+  });
+
+  it("builds year dropdown options with the all-years default first", () => {
+    const records: ActivityRecord[] = [
+      makeRecord({ ActivityEndDate: "2025-04-10" }),
+      makeRecord({ ActivityEndDate: "2026-01-15" }),
+      makeRecord({ ActivityEndDate: "2025-12-31" }),
+    ];
+    expect(getYearFilterOptions(records)).toEqual([
+      { value: undefined, label: "All Years" },
+      { value: 2026, label: "2026" },
+      { value: 2025, label: "2025" },
+    ]);
+  });
+
+  it("builds the five quarter dropdown options", () => {
+    expect(getQuarterFilterOptions()).toEqual([
+      { value: undefined, label: "All Quarters" },
+      { value: "Q1", label: "Q1" },
+      { value: "Q2", label: "Q2" },
+      { value: "Q3", label: "Q3" },
+      { value: "Q4", label: "Q4" },
+    ]);
+  });
+
+  it("builds the five category dropdown options with the all-categories default first", () => {
+    expect(getCategoryFilterOptions()).toEqual([
+      { value: undefined, label: "All Categories" },
+      { value: "Learning", label: "Learning" },
+      { value: "Mentorship", label: "Mentorship" },
+      { value: "Speaking", label: "Speaking" },
+      { value: "Community", label: "Community" },
+    ]);
   });
 });

@@ -1,15 +1,33 @@
-import { ChevronDownIcon } from "./icons";
+import { ChevronDownIcon, ChevronUpIcon } from "./icons";
 
-export function ExpandButton() {
+type ExpandButtonProps = {
+  employeeName: string;
+  detailsId: string;
+  isExpanded: boolean;
+  onToggle: () => void;
+};
+
+export function ExpandButton({
+  employeeName,
+  detailsId,
+  isExpanded,
+  onToggle,
+}: ExpandButtonProps) {
+  const label = isExpanded
+    ? `Collapse activity details for ${employeeName}`
+    : `Expand activity details for ${employeeName}`;
+  const Icon = isExpanded ? ChevronUpIcon : ChevronDownIcon;
+
   return (
     <button
       type="button"
       className="expandButton"
-      aria-label="Expand row"
-      aria-expanded={false}
-      disabled
+      aria-label={label}
+      aria-expanded={isExpanded}
+      aria-controls={detailsId}
+      onClick={onToggle}
     >
-      <ChevronDownIcon className="expandButton__chevron" width={16} height={16} />
+      <Icon className="expandButton__chevron" width={16} height={16} />
     </button>
   );
 }

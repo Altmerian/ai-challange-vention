@@ -6,7 +6,10 @@ type PodiumCardProps = {
 };
 
 export function PodiumCard({ employee }: PodiumCardProps) {
-  const subtitleParts = [employee.title, employee.unit].filter(Boolean);
+  const subtitle =
+    employee.title && employee.unit
+      ? `${employee.title} (${employee.unit})`
+      : employee.title || employee.unit;
   return (
     <div className={`podiumCard podiumCard--rank${employee.rank}`}>
       <div className="podiumCard__avatarWrap">
@@ -25,9 +28,11 @@ export function PodiumCard({ employee }: PodiumCardProps) {
         </div>
       </div>
       <h3 className="podiumCard__name">{employee.name}</h3>
-      <p className="podiumCard__role">{subtitleParts.join(" · ")}</p>
+      <p className="podiumCard__role">{subtitle}</p>
       <ScoreDisplay score={employee.totalScore} variant="podium" />
-      <div className="podiumCard__block" aria-hidden />
+      <div className="podiumCard__block" aria-hidden>
+        <span>{employee.rank}</span>
+      </div>
     </div>
   );
 }
