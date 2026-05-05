@@ -106,7 +106,7 @@ The brief requires a Free/Paid toggle in the event editor with the Paid option d
 Bootstrapped on first deploy via a seed migration. Demo credentials are committed in `task-2/README.md` so graders can sign in.
 
 **`User`s (3):**
-- `host@demo.app` / `Demo1234!` — Host of *Riverside Coding Collective*. Also `is_platform_admin = true`.
+- `host@demo.app` / `Demo1234!` — Host of *Riverside Coding Collective*. (Not a Platform Admin in the seed; that role is left unassigned and must be granted via SQL to exercise `/admin/reports`.)
 - `checker@demo.app` / `Demo1234!` — Checker of *Riverside Coding Collective*.
 - `attendee@demo.app` / `Demo1234!` — Has RSVPs across multiple events.
 

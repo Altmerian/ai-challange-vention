@@ -14,7 +14,7 @@ All demo accounts share password **`Demo1234!`**.
 
 | Email | Role |
 |---|---|
-| `host@demo.app` | Host of *Riverside Coding Collective* + Platform Admin |
+| `host@demo.app` | Host of *Riverside Coding Collective* |
 | `checker@demo.app` | Checker of *Riverside Coding Collective* |
 | `attendee@demo.app` | Regular attendee with RSVPs across the seeded events |
 | `extra1@demo.app` … `extra6@demo.app` | Extra accounts that populate the waitlist demo |
@@ -61,7 +61,7 @@ The seed includes two host orgs (*Riverside Coding Collective*, *Async Founders 
 - **CSV export** — Host dashboard → download icon on any event row. The schema is `Name,Email,RSVP Status,RSVP Created At,Check-in Time,Ticket Code` with UTF-8 BOM, RFC-4180 quoting, ISO-8601 UTC timestamps. A representative file is committed at [`samples/rsvps-sample.csv`](./samples/rsvps-sample.csv) and opens cleanly in Excel and Google Sheets.
 - **Gallery** — any signed-in attendee can upload a photo to an event; Hosts approve or reject from the dashboard's Gallery queue. Approved photos are served via short-lived signed URLs.
 - **Feedback** — after an event ends, attendees who were "going" can submit a 1–5 star rating + optional comment for 14 days. Public aggregate rating appears once an event has ≥3 ratings; individual comments stay private to the host org.
-- **Reports & moderation** — the **Report** action on any event or photo opens a dialog. Event reports route to the Platform Admin (`/admin/reports`); gallery reports route to the host org's Hosts (dashboard → **Reports** tab). Hidden items can be unhidden.
+- **Reports & moderation** — the **Report** action on any event or photo opens a dialog. Event reports route to a Platform Admin at `/admin/reports`; gallery reports route to the host org's Hosts (dashboard → **Reports** tab). Hidden items can be unhidden. *No demo account holds the Platform Admin role in this prototype — `/admin/reports` is reachable only by promoting a user via SQL.*
 - **Members & invites** — at `/host/<orgId>/members`. One reusable invite link per role (Host / Checker), copyable and revocable. Existing-role-wins if the same user follows a different invite.
 
 ## Repo layout

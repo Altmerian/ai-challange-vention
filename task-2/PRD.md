@@ -349,7 +349,7 @@ A handful of brief statements were made more precise here. The full glossary is 
 ### Seed data (committed to demo deploy)
 
 - 3 demo `User`s (`host@demo.app`, `checker@demo.app`, `attendee@demo.app`), all with password `Demo1234!`. Credentials documented in `task-2/README.md`.
-  - `host@demo.app` is also a Platform Admin so a single login can demo every queue.
+  - No seeded user holds the Platform Admin role; `is_platform_admin = true` must be granted via SQL to exercise `/admin/reports`.
 - 2 `HostOrg`s: *Riverside Coding Collective* (in-person, Berlin) and *Async Founders Lounge* (online).
 - 5 `Event`s spanning every state: a past in-person event (with check-in history + ≥3 feedback ratings), an upcoming in-person event with waitlist (capacity 5, 4 going + 2 waitlisted), an upcoming online event, a draft, and an unlisted upcoming event.
 - One `pending` `GalleryPhoto` on the past event.
