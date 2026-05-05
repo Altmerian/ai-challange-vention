@@ -1,0 +1,3 @@
+[submodule "task-2/lovable-app"]
+	path = task-2/lovable-app
+	url = https://github.com/Altmerian/events-platform.git

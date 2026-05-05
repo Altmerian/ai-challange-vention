@@ -26,3 +26,17 @@ Check the list of available tools and skills before starting your task.
 
 You have access to `Playwright` browser automation tools via the `playwright-cli` skill.
 **ALWAYS** invoke `playwright-cli` skill for frontend changes development, debugging, and verification, and for any task that requires browser interaction.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues at `Altmerian/ai-challenge-vention` via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical role names used as-is (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Multi-context: per-task `CONTEXT.md` + `docs/adr/` under each active task folder (`task-2/`, `task-3/`, `task-4/`). `task-1/` is complete and excluded. Root `CONTEXT-MAP.md` is created lazily by `/grill-with-docs`. See `docs/agents/domain.md`.

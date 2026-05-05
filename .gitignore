@@ -10,6 +10,7 @@
 !/.github/workflows/*
 /.codex/*
 /.agents/*
+/skills-lock.json
 
 # temporary docs
 /docs/archive/
