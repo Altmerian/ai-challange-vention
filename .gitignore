@@ -15,7 +15,6 @@
 # temporary docs
 /docs/archive/
 /docs/prompts/
-**/samples/**
 
 # Playwright
 **/.playwright-cli/

@@ -1,0 +1,4 @@
+Name,Email,RSVP Status,RSVP Created At,Check-in Time,Ticket Code
+"Avery Attendee",attendee@demo.app,going,2026-04-28T18:00:00Z,2026-04-28T18:30:00Z,A2BC-D34F
+"Extra 1",extra1@demo.app,going,2026-04-28T18:05:00Z,,K9MN-PQR2
+"Casey, Late",late@demo.app,cancelled,2026-04-28T19:10:00Z,,
