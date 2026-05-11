@@ -23,6 +23,10 @@ auth.json
 **/extraction/raw/**
 **/extraction/scripts/**
 
+# environment files
+.env
+.env.local
+
 # temporary files
 *.log
 .DS_Store

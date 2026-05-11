@@ -14,6 +14,8 @@ Check the `README.md` for task-specific files for more details on the task you a
 
 When working on any task, use only task-specific folders. Store all your work, including code, notes, and any other files, within the respective task folder (e.g., `task-1/`, `task-2/`, etc.). The root directory serves as a common workspace and should not contain task-specific files.
 
+- use agent files from the specific task folder (e.g., `task-3/AGENTS.md` and @task-3/CLAUDE.md for Task 3) for task-specific guidance. The root `AGENTS.md` provides general guidelines applicable to all tasks but may not contain task-specific instructions.
+
 ## Extraction and Sanitization
 
 When working with corporate and private data extraction tasks, follow the principles of data minimization and privacy. Only extract the necessary information required for the task, and ensure that any personally identifiable information (PII) is properly sanitized before storage, sending to AI tools, or sharing.
