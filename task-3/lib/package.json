@@ -1,0 +1,14 @@
+{
+  "name": "task-3-lib",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure-JS modules pasted into n8n Code nodes for the Task 3 learning-assistant bot.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.9"
+  }
+}

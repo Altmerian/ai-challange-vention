@@ -1,0 +1,363 @@
+{
+  "name": "Task 3 — Learning Assistant Bot",
+  "nodes": [
+    {
+      "id": "trg-telegram",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [-160, 0],
+      "parameters": {
+        "updates": ["message", "callback_query"],
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      }
+    },
+    {
+      "id": "classify-update",
+      "name": "Classify Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [80, 0],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Compute a single _route token from the incoming Telegram update so the\n// Switch node downstream can dispatch on one string instead of two distinct\n// paths (message.text vs callback_query.data). Longer prefixes (tpp:) are\n// checked before shorter ones (tp:) to avoid mis-routing. /learn uses a\n// command-boundary regex (not startsWith) so /learning, /learn_more, etc.\n// fall through to 'unknown' rather than being treated as /learn.\nconst LEARN_CMD = /^\\/learn(?:@\\w+)?(?:\\s|$)/;\nconst items = $input.all();\nreturn items.map((item) => {\n  const m = item.json || {};\n  const text = (m.message && m.message.text) || '';\n  const data = (m.callback_query && m.callback_query.data) || '';\n  let route = 'unknown';\n  if (text === '/start') route = '/start';\n  else if (LEARN_CMD.test(text)) route = '/learn';\n  else if (text === '/quiz') route = '/quiz';\n  else if (data.startsWith('qa:')) route = 'qa:';\n  else if (data.startsWith('rs:')) route = 'rs:';\n  else if (data.startsWith('tpp:')) route = 'tpp:';\n  else if (data.startsWith('tp:')) route = 'tp:';\n  else if (data.startsWith('qstart:')) route = 'qstart:';\n  return { json: { ...m, _route: route } };\n});\n"
+      }
+    },
+    {
+      "id": "switch-router",
+      "name": "Route by Command",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [320, 0],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r-start",
+                    "leftValue": "={{ $json._route }}",
+                    "rightValue": "/start",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "start"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r-learn",
+                    "leftValue": "={{ $json._route }}",
+                    "rightValue": "/learn",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "learn"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r-quiz",
+                    "leftValue": "={{ $json._route }}",
+                    "rightValue": "/quiz",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "quiz"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r-qa",
+                    "leftValue": "={{ $json._route }}",
+                    "rightValue": "qa:",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "qa"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r-rs",
+                    "leftValue": "={{ $json._route }}",
+                    "rightValue": "rs:",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "rs"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r-tp",
+                    "leftValue": "={{ $json._route }}",
+                    "rightValue": "tp:",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "tp"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r-tpp",
+                    "leftValue": "={{ $json._route }}",
+                    "rightValue": "tpp:",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "tpp"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r-qstart",
+                    "leftValue": "={{ $json._route }}",
+                    "rightValue": "qstart:",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "qstart"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "unknown"
+        }
+      }
+    },
+    {
+      "id": "send-start",
+      "name": "Send /start help",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [640, -640],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.message.chat.id }}",
+        "text": "👋 Hi! I'm your learning assistant.\n• Send /learn &lt;url&gt; to save and summarize an article.\n• Send /quiz to test yourself on a saved material.\n• Send /start to see this again.",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      }
+    },
+    {
+      "id": "stub-learn",
+      "name": "/learn stub (slice 2)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [640, -460],
+      "parameters": {}
+    },
+    {
+      "id": "stub-quiz",
+      "name": "/quiz stub (slice 4)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [640, -280],
+      "parameters": {}
+    },
+    {
+      "id": "stub-qa",
+      "name": "qa: stub (slice 5)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [640, -100],
+      "parameters": {}
+    },
+    {
+      "id": "stub-rs",
+      "name": "rs: stub (slice 6)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [640, 80],
+      "parameters": {}
+    },
+    {
+      "id": "stub-tp",
+      "name": "tp: stub (slice 4)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [640, 260],
+      "parameters": {}
+    },
+    {
+      "id": "stub-tpp",
+      "name": "tpp: stub (slice 4)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [640, 440],
+      "parameters": {}
+    },
+    {
+      "id": "stub-qstart",
+      "name": "qstart: stub (slice 5)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [640, 620],
+      "parameters": {}
+    },
+    {
+      "id": "stub-unknown",
+      "name": "Unknown update (no-op)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [640, 800],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          { "node": "Classify Update", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Classify Update": {
+      "main": [
+        [
+          { "node": "Route by Command", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Route by Command": {
+      "main": [
+        [{ "node": "Send /start help", "type": "main", "index": 0 }],
+        [{ "node": "/learn stub (slice 2)", "type": "main", "index": 0 }],
+        [{ "node": "/quiz stub (slice 4)", "type": "main", "index": 0 }],
+        [{ "node": "qa: stub (slice 5)", "type": "main", "index": 0 }],
+        [{ "node": "rs: stub (slice 6)", "type": "main", "index": 0 }],
+        [{ "node": "tp: stub (slice 4)", "type": "main", "index": 0 }],
+        [{ "node": "tpp: stub (slice 4)", "type": "main", "index": 0 }],
+        [{ "node": "qstart: stub (slice 5)", "type": "main", "index": 0 }],
+        [{ "node": "Unknown update (no-op)", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
