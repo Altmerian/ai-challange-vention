@@ -9,7 +9,7 @@ I want to use my Telegram chat as a lightweight, AI-driven study tool: paste a U
 
 ## Solution
 
-An n8n-hosted Telegram bot — `t.me/AltmerLearningBot` — exposing three commands:
+An n8n-hosted Telegram bot — handle at `t.me/<TG_BOT_USERNAME>` (see `.env`) — exposing three commands:
 
 - `/start` — greeting + command help
 - `/learn <url>` — fetches the page, extracts clean Markdown, runs the **Teacher** AI role to produce a **Summary** (`title`, 3–5 `mainConcepts`, 5–7 `keyPoints`, `difficulty`), stores it as a **LearningMaterial** scoped to the **User**'s `chat_id`, and replies with the formatted Summary plus a "Quiz me now" inline button
@@ -258,7 +258,7 @@ The five deep modules with real edge-case surface plus the `htmlEscape` utility 
 
 ## Further Notes
 
-- **Bot identity**: `t.me/AltmerLearningBot`. Token in `task-3/.env` as `TG_BOT_TOKEN`. Never hardcoded in workflow JSON; lives in an n8n credential.
+- **Bot identity**: handle at `t.me/<TG_BOT_USERNAME>` (see `task-3/.env`). Token in `task-3/.env` as `TG_BOT_TOKEN`. Never hardcoded in workflow JSON; lives in an n8n credential.
 - **Submission artifacts** (per task brief): exported workflow JSON, link to the live bot, `task-3/report.md`, `task-3/README.md` with a short usage guide.
 - **Quota awareness**: Starter Annual plan = 2,500 executions / month and 100 MCP requests / month. One execution per Telegram update means ~2,500 user interactions/month before the workflow disables — plenty for demo and personal use.
 - **Domain & ADR cross-references**:

@@ -3,7 +3,7 @@
 ## Tools and techniques
 
 - **n8n Cloud** (Starter Annual) hosting the workflow and persisting state in n8n **Data Tables**.
-- **Telegram Bot API** via the n8n Telegram Trigger + sendMessage / answerCallbackQuery nodes. Bot `t.me/AltmerLearningBot` registered through BotFather; token kept in `.env`, never in the workflow JSON.
+- **Telegram Bot API** via the n8n Telegram Trigger + sendMessage / answerCallbackQuery nodes. Bot registered through BotFather; handle and token kept in `.env` (`TG_BOT_USERNAME`, `TG_BOT_TOKEN`), never in the workflow JSON.
 - **Jina Reader** (`r.jina.ai`) as the URL → clean Markdown extractor, called from the standard HTTP Request node.
 - **OpenAI** via the n8n built-in LLM credential (`gpt-5-mini`, JSON response mode) for both the Teacher (summary + difficulty) and Examiner (5-question MCQ + per-option explanations) roles. Personal `OPENAI_API_KEY` / `GEMINI_API_KEY` staged as fallbacks.
 - **Agent skills** used during design: `/grill-with-docs` to interview through the design tree, `/to-prd` to synthesise the PRD, `/codex:adversarial-review` to challenge the design.
