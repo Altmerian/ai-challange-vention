@@ -176,7 +176,7 @@ The following are extracted as plain JS in `task-3/lib/` and pasted into n8n Cod
 8. **quizFeedbackRenderer** — renders the per-question ✅/❌ + explanation message.
 9. **quizResultRenderer** — renders the final score card with per-Q breakdown.
 10. **summaryRenderer** — renders the Teacher's Summary into Telegram HTML with the difficulty badge and "Quiz me now" inline button.
-11. **shortIdMinter** — `mint(rowId) → string` (8-char base36). Deterministic from row id.
+11. **shortIdMinter** — `mint(seed) → string` (8-char base36). Deterministic from a stable composite key. Acceptable seeds: the storage row id once known, or a natural key such as `${chat_id}|${normalized_url}` (preferred at insert time so the `short_id` is in the row from the start and no second write is needed). Uniqueness only needs to hold within a `chat_id`, and the dedup rule above guarantees no two materials in one chat share `(chat_id, normalized_url)`, so the natural-key seed has zero in-chat collision risk by construction.
 
 ### Error handling
 

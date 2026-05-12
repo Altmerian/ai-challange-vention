@@ -16,7 +16,8 @@
           "id": "hVZapz6aOoNv7ZVL",
           "name": "Task 3 Telegram Bot"
         }
-      }
+      },
+      "webhookId": "028b0178-1915-444e-ba5d-8911a90470a2"
     },
     {
       "id": "classify-update",
@@ -261,15 +262,609 @@
           "id": "hVZapz6aOoNv7ZVL",
           "name": "Task 3 Telegram Bot"
         }
+      },
+      "webhookId": "5b3d32eb-9d1f-4e8e-b6d3-4eeedf7b2160"
+    },
+    {
+      "id": "learn-parse",
+      "name": "/learn parse + normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, -460],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Extract the URL argument from `/learn <url>` and normalise it for dedup.\n// Regex-based parser mirrors task-3/lib/urlNormalizer.js verbatim — the\n// WHATWG `URL` constructor is not exposed inside the n8n Code-node task-runner\n// sandbox on n8n Cloud, so a `new URL(...)`-based version silently fell\n// through to the error branch.\n// Rules: scheme must be http/https; host lowercased; fragment dropped;\n// trailing slash on non-root paths dropped; query preserved verbatim.\n// On invalid input emit one item with valid=false plus _error.code so the\n// downstream Switch routes to the unified error builder.\nconst URL_RE = /^(https?):\\/\\/([^\\s/?#]+)(\\/[^?#]*)?(\\?[^#]*)?(#.*)?$/i;\nconst AUTHORITY_RE = /^([^:]+)(?::(\\d+))?$/;\nfunction normalizeUrl(raw) {\n  if (typeof raw !== 'string') return null;\n  const t = raw.trim();\n  if (t === '') return null;\n  const m = t.match(URL_RE);\n  if (!m) return null;\n  const auth = m[2].match(AUTHORITY_RE);\n  if (!auth || !auth[1]) return null;\n  const protocol = m[1].toLowerCase() + ':';\n  const host = auth[1].toLowerCase();\n  const port = auth[2] ? `:${auth[2]}` : '';\n  let path = m[3] || '/';\n  if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);\n  const search = m[4] || '';\n  return `${protocol}//${host}${port}${path}${search}`;\n}\n\nconst items = $input.all();\nreturn items.map((item) => {\n  const m = item.json || {};\n  const text = (m.message && m.message.text) || '';\n  const chatId = String((m.message && m.message.chat && m.message.chat.id) || '');\n  const match = text.match(/^\\/learn(?:@\\w+)?(?:\\s+(.*))?$/);\n  const originalUrl = match && match[1] ? match[1].trim() : '';\n  const normalizedUrl = normalizeUrl(originalUrl);\n  const valid = !!(chatId && normalizedUrl);\n  const code = originalUrl === '' ? 'no_url' : 'invalid_url';\n  return {\n    json: {\n      ...m,\n      _learn: {\n        chatId,\n        originalUrl,\n        normalizedUrl: normalizedUrl || '',\n        valid,\n        reason: valid ? null : code,\n        _error: valid ? null : { code },\n      },\n    },\n  };\n});\n"
       }
     },
     {
-      "id": "stub-learn",
-      "name": "/learn stub (slice 2)",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [640, -460],
-      "parameters": {}
+      "id": "learn-valid-switch",
+      "name": "/learn valid?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [880, -460],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "learn-valid-true",
+                    "leftValue": "={{ $json._learn.valid }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "valid"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "invalid"
+        }
+      }
+    },
+    {
+      "id": "learn-content-ok",
+      "name": "/learn content ok?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [2080, -260],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "content-no-error",
+                    "leftValue": "={{ !$json._learn._error }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ok"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "error"
+        }
+      }
+    },
+    {
+      "id": "learn-teacher-ok",
+      "name": "/learn Teacher ok?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [2800, -260],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "teacher-not-failed",
+                    "leftValue": "={{ !$json._learn._teacherFailed }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ok"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "retry"
+        }
+      }
+    },
+    {
+      "id": "learn-teacher-retry-prompt",
+      "name": "/learn Teacher retry prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [3040, -260],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "teacher-retry-prompt-1",
+              "name": "prompt",
+              "type": "string",
+              "value": "=The previous response did not match the required JSON schema. You MUST return ONLY a single valid JSON object — no prose, no explanations, no code fences, no extra fields.\n\nSchema (exact):\n{\n  \"title\": string (non-empty, max 120 chars),\n  \"mainConcepts\": array of 3 to 5 non-empty strings,\n  \"keyPoints\": array of 5 to 7 non-empty strings,\n  \"difficulty\": one of \"beginner\" | \"intermediate\" | \"advanced\"\n}\n\nReturn only that JSON object. Now summarise the content below.\n\n--- BEGIN CONTENT ---\n{{ $json._learn.extractedContent }}\n--- END CONTENT ---"
+            },
+            {
+              "id": "teacher-retry-learn-passthrough",
+              "name": "_learn",
+              "type": "object",
+              "value": "={{ $json._learn }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "learn-teacher-retry-chain",
+      "name": "/learn Teacher retry chain",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [3280, -260],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "hasOutputParser": false
+      }
+    },
+    {
+      "id": "learn-teacher-retry-model",
+      "name": "/learn Teacher retry model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [3280, -100],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5-mini"
+        },
+        "options": {
+          "responseFormat": "json_object"
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "D43gBIUjktEiOzQK",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "id": "learn-teacher-retry-parse",
+      "name": "/learn Teacher retry parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3520, -260],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Second Teacher attempt: same parse contract as the first, but a final\n// failure here surfaces a user-visible error (PRD #7 / #8) instead of\n// triggering another retry. Carries both raw responses + structured errors\n// in _learn for post-mortem visibility in the n8n execution log.\nconst DIFFICULTY = new Set(['beginner', 'intermediate', 'advanced']);\nfunction isNonEmptyString(v) { return typeof v === 'string' && v.trim().length > 0; }\nfunction isStrArr(v, min, max) {\n  if (!Array.isArray(v)) return false;\n  if (v.length < min || v.length > max) return false;\n  return v.every(isNonEmptyString);\n}\nfunction parseTeacher(raw) {\n  let p;\n  try { p = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return { ok: false, error: { code: 'not_json', message: 'Teacher output is not valid JSON' } }; }\n  if (p === null || typeof p !== 'object' || Array.isArray(p)) return { ok: false, error: { code: 'not_object', message: 'Teacher output is not a JSON object' } };\n  if (!isNonEmptyString(p.title)) return { ok: false, error: { code: 'schema', message: 'title is missing or empty' } };\n  if (!isStrArr(p.mainConcepts, 3, 5)) return { ok: false, error: { code: 'schema', message: 'mainConcepts must be an array of 3..5 non-empty strings' } };\n  if (!isStrArr(p.keyPoints, 5, 7)) return { ok: false, error: { code: 'schema', message: 'keyPoints must be an array of 5..7 non-empty strings' } };\n  if (!DIFFICULTY.has(p.difficulty)) return { ok: false, error: { code: 'schema', message: 'difficulty must be beginner | intermediate | advanced' } };\n  return { ok: true, value: { title: p.title.trim(), mainConcepts: p.mainConcepts.map((s) => s.trim()), keyPoints: p.keyPoints.map((s) => s.trim()), difficulty: p.difficulty } };\n}\nfunction mintShortId(seed) {\n  const s = seed === null || seed === undefined ? '' : String(seed);\n  let h = 5381;\n  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;\n  return h.toString(36).padStart(8, '0').slice(0, 8);\n}\n\nconst learnCtx = $('/learn extract content').first().json._learn;\nconst firstFail = $('/learn Teacher parse').first().json._learn || {};\nconst chainItem = $input.first().json;\nconst rawText = (typeof chainItem.text === 'string' ? chainItem.text : (typeof chainItem.output === 'string' ? chainItem.output : JSON.stringify(chainItem)));\nconst result = parseTeacher(rawText);\nif (!result.ok) {\n  return [{\n    json: {\n      _learn: {\n        ...learnCtx,\n        _error: { code: 'teacher_failed' },\n        _teacherErrorFirst: firstFail._teacherError || null,\n        _teacherErrorSecond: result.error,\n        _teacherRawFirst: firstFail._teacherRawFirst || null,\n        _teacherRawSecond: rawText,\n      },\n    },\n  }];\n}\nconst summary = result.value;\nconst shortId = mintShortId(`${learnCtx.chatId}|${learnCtx.normalizedUrl}`);\nreturn [{\n  json: {\n    _learn: {\n      ...learnCtx,\n      cached: true,\n      shortId,\n      summary,\n    },\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "learn-teacher-retry-ok",
+      "name": "/learn Teacher retry ok?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [3760, -260],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "teacher-retry-no-error",
+                    "leftValue": "={{ !$json._learn._error }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ok"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "fail"
+        }
+      }
+    },
+    {
+      "id": "learn-error-build",
+      "name": "/learn build error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, -360],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Unified error-message builder for /learn failures (PRD error table\n// rows #1, #2, #3, #4, #5, #7, #8). The error code is set by whichever\n// upstream Code node detected the failure and routed here via a Switch.\n// Telegram parse_mode is HTML — pure dynamic fields are escaped, static\n// markup (<code> ... </code>) is interpolated verbatim.\nfunction htmlEscape(v) {\n  if (v === null || v === undefined) return '';\n  const s = typeof v === 'string' ? v : String(v);\n  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\n\nconst items = $input.all();\nreturn items.map((item) => {\n  const learn = (item.json && item.json._learn) || {};\n  const chatId = learn.chatId;\n  const err = learn._error || { code: 'unknown' };\n  let html;\n  switch (err.code) {\n    case 'no_url':\n    case 'invalid_url':\n      html = 'Send a URL after /learn, e.g. <code>/learn https://example.com/article</code>';\n      break;\n    case 'jina_4xx':\n    case 'jina_5xx':\n      html = `I couldn\\u2019t fetch that page (status ${htmlEscape(err.status)}). Try a different URL?`;\n      break;\n    case 'jina_network':\n      html = 'I couldn\\u2019t fetch that page (network error). Try a different URL?';\n      break;\n    case 'too_short':\n      html = 'That page doesn\\u2019t have enough content for me to summarize. Try a different URL?';\n      break;\n    case 'teacher_failed':\n      html = 'Sorry, I had trouble processing this one. Try /learn again, or pick a different URL?';\n      break;\n    default:\n      html = 'Something went wrong. Try again?';\n  }\n  return { json: { _render: { chatId, html }, _learn: learn } };\n});\n"
+      }
+    },
+    {
+      "id": "learn-error-send",
+      "name": "/learn send error",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1360, -360],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json._render.chatId }}",
+        "text": "={{ $json._render.html }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      }
+    },
+    {
+      "id": "learn-dedup-get",
+      "name": "/learn dedup lookup",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [1120, -560],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YTppSzT6PJAusGVr",
+          "cachedResultName": "materials"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "chat_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._learn.chatId }}"
+            },
+            {
+              "keyName": "url",
+              "condition": "eq",
+              "keyValue": "={{ $json._learn.normalizedUrl }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "learn-classify-cache",
+      "name": "/learn classify cache",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, -560],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Decide whether the upstream Data Table `get` returned an existing row.\n// Forward the original `_learn` context (read from the parse node) plus\n// either the cached row (hit) or just the chatId+url (miss).\nconst learnCtx = $('/learn parse + normalize').first().json._learn;\nconst rows = $input.all().map((it) => it.json).filter((r) => r && r.short_id);\nif (rows.length > 0) {\n  const r = rows[0];\n  let mainConcepts = [];\n  let keyPoints = [];\n  try { mainConcepts = JSON.parse(r.main_concepts || '[]'); } catch { mainConcepts = []; }\n  try { keyPoints = JSON.parse(r.key_points || '[]'); } catch { keyPoints = []; }\n  return [{\n    json: {\n      _learn: {\n        ...learnCtx,\n        cached: true,\n        shortId: r.short_id,\n        summary: {\n          title: r.title,\n          mainConcepts,\n          keyPoints,\n          difficulty: r.difficulty,\n        },\n      },\n    },\n  }];\n}\nreturn [{\n  json: {\n    _learn: { ...learnCtx, cached: false },\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "learn-cache-switch",
+      "name": "/learn cache hit?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [1600, -560],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "learn-cache-hit",
+                    "leftValue": "={{ $json._learn.cached }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "hit"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "miss"
+        }
+      }
+    },
+    {
+      "id": "learn-jina",
+      "name": "/learn Jina fetch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1840, -440],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "url": "=https://r.jina.ai/{{ encodeURI($json._learn.originalUrl) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "neverError": true,
+              "fullResponse": true
+            }
+          },
+          "timeout": 20000
+        }
+      }
+    },
+    {
+      "id": "learn-jina-post",
+      "name": "/learn extract content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2080, -440],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Classify the Jina response and prepare extracted content.\n// Three concerns merged here to keep the topology flat (PRD error rules #3, #4, #5, #6):\n//   1. Status check — HTTP node runs with neverError+fullResponse, so 4xx/5xx land here\n//      with a numeric statusCode. Timeouts / network errors arrive via the error\n//      output (onError=continueErrorOutput) and lack statusCode entirely.\n//   2. Length floor — under 500 chars (post-trim) → too_short error.\n//   3. Token budget — over ~30k tokens (≈120k chars) → silent head-truncate.\n// Emits _learn with either _error set (failure paths) or extractedContent set (happy path).\nconst MAX_CHARS = 120000;\nconst MIN_CHARS = 500;\nconst learnCtx = $('/learn parse + normalize').first().json._learn;\nconst item = $input.first().json || {};\n\nif (typeof item.statusCode !== 'number') {\n  return [{ json: { _learn: { ...learnCtx, _error: { code: 'jina_network' } } } }];\n}\nconst status = item.statusCode;\nif (status >= 400) {\n  const code = status >= 500 ? 'jina_5xx' : 'jina_4xx';\n  return [{ json: { _learn: { ...learnCtx, _error: { code, status } } } }];\n}\n\n// 2xx — body is a string under responseFormat=text + fullResponse=true.\nlet raw = '';\nif (typeof item.body === 'string') raw = item.body;\nelse if (typeof item.data === 'string') raw = item.data;\nelse if (typeof item === 'string') raw = item;\nelse raw = JSON.stringify(item.body || item);\n\nconst trimmedLen = raw.trim().length;\nif (trimmedLen < MIN_CHARS) {\n  return [{ json: { _learn: { ...learnCtx, _error: { code: 'too_short', charCount: trimmedLen } } } }];\n}\n\nconst truncated = raw.length > MAX_CHARS ? raw.slice(0, MAX_CHARS) : raw;\nreturn [{\n  json: {\n    _learn: {\n      ...learnCtx,\n      extractedContent: truncated,\n      originalLength: raw.length,\n      truncated: raw.length > MAX_CHARS,\n      truncatedLength: truncated.length,\n    },\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "learn-teacher-prompt",
+      "name": "/learn Teacher prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2320, -440],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "teacher-prompt-1",
+              "name": "prompt",
+              "type": "string",
+              "value": "=You are the Teacher AI. Read the extracted page content below and produce a JSON object summarising it.\n\nYour response MUST be ONLY a single valid JSON object matching this schema exactly. Do not include any text outside the JSON. Do not wrap it in markdown code fences.\n\nSchema:\n{\n  \"title\": string (inferred from the content, max 120 chars),\n  \"mainConcepts\": string[] of 3 to 5 short noun-phrase keywords,\n  \"keyPoints\": string[] of 5 to 7 one-sentence bullets,\n  \"difficulty\": one of \"beginner\" | \"intermediate\" | \"advanced\"\n}\n\nReturn only the json object.\n\n--- BEGIN CONTENT ---\n{{ $json._learn.extractedContent }}\n--- END CONTENT ---"
+            },
+            {
+              "id": "teacher-learn-passthrough",
+              "name": "_learn",
+              "type": "object",
+              "value": "={{ $json._learn }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "learn-teacher-chain",
+      "name": "/learn Teacher chain",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [2560, -440],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "hasOutputParser": false
+      }
+    },
+    {
+      "id": "learn-teacher-model",
+      "name": "/learn Teacher model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [2560, -260],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5-mini"
+        },
+        "options": {
+          "responseFormat": "json_object"
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "D43gBIUjktEiOzQK",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "id": "learn-teacher-parse",
+      "name": "/learn Teacher parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2800, -440],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Validate the first Teacher response into the Summary shape.\n// Mirrors task-3/lib/teacherOutputParser.js — same { code, message } error\n// shape so the lib unit tests document the contract that the workflow runs.\n// On failure emits _learn with _teacherFailed=true (carrying the raw response\n// and structured parse error) so the downstream Switch routes to the retry\n// sub-flow. On success emits _learn with the parsed Summary plus shortId.\nconst DIFFICULTY = new Set(['beginner', 'intermediate', 'advanced']);\nfunction isNonEmptyString(v) { return typeof v === 'string' && v.trim().length > 0; }\nfunction isStrArr(v, min, max) {\n  if (!Array.isArray(v)) return false;\n  if (v.length < min || v.length > max) return false;\n  return v.every(isNonEmptyString);\n}\nfunction parseTeacher(raw) {\n  let p;\n  try { p = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return { ok: false, error: { code: 'not_json', message: 'Teacher output is not valid JSON' } }; }\n  if (p === null || typeof p !== 'object' || Array.isArray(p)) return { ok: false, error: { code: 'not_object', message: 'Teacher output is not a JSON object' } };\n  if (!isNonEmptyString(p.title)) return { ok: false, error: { code: 'schema', message: 'title is missing or empty' } };\n  if (!isStrArr(p.mainConcepts, 3, 5)) return { ok: false, error: { code: 'schema', message: 'mainConcepts must be an array of 3..5 non-empty strings' } };\n  if (!isStrArr(p.keyPoints, 5, 7)) return { ok: false, error: { code: 'schema', message: 'keyPoints must be an array of 5..7 non-empty strings' } };\n  if (!DIFFICULTY.has(p.difficulty)) return { ok: false, error: { code: 'schema', message: 'difficulty must be beginner | intermediate | advanced' } };\n  return { ok: true, value: { title: p.title.trim(), mainConcepts: p.mainConcepts.map((s) => s.trim()), keyPoints: p.keyPoints.map((s) => s.trim()), difficulty: p.difficulty } };\n}\n\n// djb2 hash for the deterministic 8-char short_id.\nfunction mintShortId(seed) {\n  const s = seed === null || seed === undefined ? '' : String(seed);\n  let h = 5381;\n  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;\n  return h.toString(36).padStart(8, '0').slice(0, 8);\n}\n\nconst learnCtx = $('/learn extract content').first().json._learn;\nconst chainItem = $input.first().json;\nconst rawText = (typeof chainItem.text === 'string' ? chainItem.text : (typeof chainItem.output === 'string' ? chainItem.output : JSON.stringify(chainItem)));\nconst result = parseTeacher(rawText);\nif (!result.ok) {\n  // Forward extractedContent so the retry prompt Set node can re-interpolate it,\n  // and the raw response for logging (PRD error rules #7/#8).\n  return [{\n    json: {\n      _learn: {\n        ...learnCtx,\n        _teacherFailed: true,\n        _teacherError: result.error,\n        _teacherRawFirst: rawText,\n      },\n    },\n  }];\n}\nconst summary = result.value;\nconst shortId = mintShortId(`${learnCtx.chatId}|${learnCtx.normalizedUrl}`);\nreturn [{\n  json: {\n    _learn: {\n      ...learnCtx,\n      cached: true,\n      shortId,\n      summary,\n    },\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "learn-insert",
+      "name": "/learn insert material",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [3040, -440],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YTppSzT6PJAusGVr",
+          "cachedResultName": "materials"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "chat_id": "={{ $json._learn.chatId }}",
+            "short_id": "={{ $json._learn.shortId }}",
+            "url": "={{ $json._learn.normalizedUrl }}",
+            "title": "={{ $json._learn.summary.title }}",
+            "extracted_content": "={{ $json._learn.extractedContent }}",
+            "main_concepts": "={{ JSON.stringify($json._learn.summary.mainConcepts) }}",
+            "key_points": "={{ JSON.stringify($json._learn.summary.keyPoints) }}",
+            "difficulty": "={{ $json._learn.summary.difficulty }}",
+            "added_date": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "chat_id", "displayName": "chat_id", "type": "string", "canBeUsedToMatch": true, "removed": false },
+            { "id": "short_id", "displayName": "short_id", "type": "string", "canBeUsedToMatch": true, "removed": false },
+            { "id": "url", "displayName": "url", "type": "string", "canBeUsedToMatch": true, "removed": false },
+            { "id": "title", "displayName": "title", "type": "string", "canBeUsedToMatch": true, "removed": false },
+            { "id": "extracted_content", "displayName": "extracted_content", "type": "string", "canBeUsedToMatch": true, "removed": false },
+            { "id": "main_concepts", "displayName": "main_concepts", "type": "string", "canBeUsedToMatch": true, "removed": false },
+            { "id": "key_points", "displayName": "key_points", "type": "string", "canBeUsedToMatch": true, "removed": false },
+            { "id": "difficulty", "displayName": "difficulty", "type": "string", "canBeUsedToMatch": true, "removed": false },
+            { "id": "added_date", "displayName": "added_date", "type": "date", "canBeUsedToMatch": true, "removed": false }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "learn-insert-pass",
+      "name": "/learn forward summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3280, -440],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// The Data Table insert node emits the inserted row's columns; we don't\n// need them — we already carry the Summary in our context. Re-emit the\n// _learn context from whichever Teacher parse actually produced the Summary\n// (retry parse if the first attempt failed; original parse otherwise).\n// Reading the original parse unconditionally — as the slice-3 first cut did —\n// would render the FAILED first-attempt context on retry-success and ship a\n// blank/garbled summary while the Data Table row was correct (S3-HIGH-002).\nfunction pick(nodeName) {\n  try {\n    const item = $(nodeName).first();\n    if (item && item.json && item.json._learn && item.json._learn.summary) {\n      return item.json._learn;\n    }\n  } catch (_) { /* node didn't run on this branch */ }\n  return null;\n}\nconst learnCtx = pick('/learn Teacher retry parse') || pick('/learn Teacher parse') || {};\nreturn [{ json: { _learn: learnCtx } }];\n"
+      }
+    },
+    {
+      "id": "learn-render",
+      "name": "/learn render summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3520, -560],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Render the Summary into the Telegram HTML body + inline keyboard.\n// Mirrors task-3/lib/summaryRenderer.js. Every dynamic field is routed\n// through htmlEscape; static markup (`<b>`, newlines, emojis) is verbatim.\nfunction htmlEscape(v) {\n  if (v === null || v === undefined) return '';\n  const s = typeof v === 'string' ? v : String(v);\n  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\nconst BADGES = { beginner: '🟢', intermediate: '🟡', advanced: '🔴' };\nconst items = $input.all();\nreturn items.map((item) => {\n  const c = (item.json && item.json._learn) || {};\n  const summary = c.summary || {};\n  const shortId = c.shortId || '';\n  const badge = BADGES[summary.difficulty] || '⚪';\n  const known = badge !== '⚪';\n  const label = known ? summary.difficulty.charAt(0).toUpperCase() + summary.difficulty.slice(1) : 'Unknown';\n  const titleHtml = htmlEscape(summary.title);\n  const conceptsHtml = (summary.mainConcepts || []).map((x) => `• ${htmlEscape(x)}`).join('\\n');\n  const pointsHtml = (summary.keyPoints || []).map((x) => `• ${htmlEscape(x)}`).join('\\n');\n  const html = [\n    `<b>${titleHtml}</b>`,\n    `${badge} <b>Difficulty:</b> ${htmlEscape(label)}`,\n    '',\n    '<b>Main concepts</b>',\n    conceptsHtml,\n    '',\n    '<b>Key points</b>',\n    pointsHtml,\n  ].join('\\n');\n  return {\n    json: {\n      _learn: c,\n      _render: {\n        chatId: c.chatId,\n        html,\n        callbackData: `qstart:${shortId}`,\n      },\n    },\n  };\n});\n"
+      }
+    },
+    {
+      "id": "learn-send",
+      "name": "/learn send summary",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [3760, -560],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json._render.chatId }}",
+        "text": "={{ $json._render.html }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🧠 Quiz me now",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._render.callbackData }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      }
     },
     {
       "id": "stub-quiz",
@@ -346,7 +941,7 @@
     "Route by Command": {
       "main": [
         [{ "node": "Send /start help", "type": "main", "index": 0 }],
-        [{ "node": "/learn stub (slice 2)", "type": "main", "index": 0 }],
+        [{ "node": "/learn parse + normalize", "type": "main", "index": 0 }],
         [{ "node": "/quiz stub (slice 4)", "type": "main", "index": 0 }],
         [{ "node": "qa: stub (slice 5)", "type": "main", "index": 0 }],
         [{ "node": "rs: stub (slice 6)", "type": "main", "index": 0 }],
@@ -354,6 +949,122 @@
         [{ "node": "tpp: stub (slice 4)", "type": "main", "index": 0 }],
         [{ "node": "qstart: stub (slice 5)", "type": "main", "index": 0 }],
         [{ "node": "Unknown update (no-op)", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn parse + normalize": {
+      "main": [
+        [{ "node": "/learn valid?", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn valid?": {
+      "main": [
+        [{ "node": "/learn dedup lookup", "type": "main", "index": 0 }],
+        [{ "node": "/learn build error", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn dedup lookup": {
+      "main": [
+        [{ "node": "/learn classify cache", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn classify cache": {
+      "main": [
+        [{ "node": "/learn cache hit?", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn cache hit?": {
+      "main": [
+        [{ "node": "/learn render summary", "type": "main", "index": 0 }],
+        [{ "node": "/learn Jina fetch", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn Jina fetch": {
+      "main": [
+        [{ "node": "/learn extract content", "type": "main", "index": 0 }],
+        [{ "node": "/learn extract content", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn extract content": {
+      "main": [
+        [{ "node": "/learn content ok?", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn content ok?": {
+      "main": [
+        [{ "node": "/learn Teacher prompt", "type": "main", "index": 0 }],
+        [{ "node": "/learn build error", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn Teacher prompt": {
+      "main": [
+        [{ "node": "/learn Teacher chain", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn Teacher model": {
+      "ai_languageModel": [
+        [{ "node": "/learn Teacher chain", "type": "ai_languageModel", "index": 0 }]
+      ]
+    },
+    "/learn Teacher chain": {
+      "main": [
+        [{ "node": "/learn Teacher parse", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn Teacher parse": {
+      "main": [
+        [{ "node": "/learn Teacher ok?", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn Teacher ok?": {
+      "main": [
+        [{ "node": "/learn insert material", "type": "main", "index": 0 }],
+        [{ "node": "/learn Teacher retry prompt", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn Teacher retry prompt": {
+      "main": [
+        [{ "node": "/learn Teacher retry chain", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn Teacher retry model": {
+      "ai_languageModel": [
+        [{ "node": "/learn Teacher retry chain", "type": "ai_languageModel", "index": 0 }]
+      ]
+    },
+    "/learn Teacher retry chain": {
+      "main": [
+        [{ "node": "/learn Teacher retry parse", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn Teacher retry parse": {
+      "main": [
+        [{ "node": "/learn Teacher retry ok?", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn Teacher retry ok?": {
+      "main": [
+        [{ "node": "/learn insert material", "type": "main", "index": 0 }],
+        [{ "node": "/learn build error", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn build error": {
+      "main": [
+        [{ "node": "/learn send error", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn insert material": {
+      "main": [
+        [{ "node": "/learn forward summary", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn forward summary": {
+      "main": [
+        [{ "node": "/learn render summary", "type": "main", "index": 0 }]
+      ]
+    },
+    "/learn render summary": {
+      "main": [
+        [{ "node": "/learn send summary", "type": "main", "index": 0 }]
       ]
     }
   },
