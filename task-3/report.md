@@ -7,7 +7,7 @@
 - **Jina Reader** (`r.jina.ai`) as the URL → clean Markdown extractor, called from the standard HTTP Request node.
 - **OpenAI** via the n8n built-in LLM credential (`gpt-5-mini`, JSON response mode) for both the Teacher (summary + difficulty) and Examiner (5-question MCQ + per-option explanations) roles. Personal `OPENAI_API_KEY` / `GEMINI_API_KEY` staged as fallbacks.
 - **Agent skills** used during design: `/grill-with-docs` to interview through the design tree, `/to-prd` to synthesise the PRD, `/codex:adversarial-review` to challenge the design.
-- **MCPs**: n8n MCP for node-schema introspection, Ref MCP for live docs lookups.
+- **MCPs**: n8n MCP for node-schema introspection, Ref MCP for live docs lookups, Claude Code computer-use 
 
 ## What worked
 

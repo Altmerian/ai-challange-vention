@@ -1,14 +1,20 @@
 {
-  "name": "Task 3 — Learning Assistant Bot",
+  "name": "Task 3 \u2014 Learning Assistant Bot",
   "nodes": [
     {
       "id": "trg-telegram",
       "name": "Telegram Trigger",
       "type": "n8n-nodes-base.telegramTrigger",
       "typeVersion": 1.2,
-      "position": [-160, 0],
+      "position": [
+        -160,
+        0
+      ],
       "parameters": {
-        "updates": ["message", "callback_query"],
+        "updates": [
+          "message",
+          "callback_query"
+        ],
         "additionalFields": {}
       },
       "credentials": {
@@ -24,7 +30,10 @@
       "name": "Classify Update",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [80, 0],
+      "position": [
+        80,
+        0
+      ],
       "parameters": {
         "language": "javaScript",
         "mode": "runOnceForAllItems",
@@ -36,7 +45,10 @@
       "name": "Route by Command",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
-      "position": [320, 0],
+      "position": [
+        320,
+        0
+      ],
       "parameters": {
         "mode": "rules",
         "rules": {
@@ -246,12 +258,15 @@
       "name": "Send /start help",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [640, -640],
+      "position": [
+        640,
+        -640
+      ],
       "parameters": {
         "resource": "message",
         "operation": "sendMessage",
         "chatId": "={{ $json.message.chat.id }}",
-        "text": "👋 Hi! I'm your learning assistant.\n• Send /learn &lt;url&gt; to save and summarize an article.\n• Send /quiz to test yourself on a saved material.\n• Send /start to see this again.",
+        "text": "\ud83d\udc4b Hi! I'm your learning assistant.\n\u2022 Send /learn &lt;url&gt; to save and summarize an article.\n\u2022 Send /quiz to test yourself on a saved material.\n\u2022 Send /start to see this again.",
         "additionalFields": {
           "parse_mode": "HTML",
           "appendAttribution": false
@@ -270,11 +285,14 @@
       "name": "/learn parse + normalize",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [640, -460],
+      "position": [
+        640,
+        -460
+      ],
       "parameters": {
         "language": "javaScript",
         "mode": "runOnceForAllItems",
-        "jsCode": "// Extract the URL argument from `/learn <url>` and normalise it for dedup.\n// Regex-based parser mirrors task-3/lib/urlNormalizer.js verbatim — the\n// WHATWG `URL` constructor is not exposed inside the n8n Code-node task-runner\n// sandbox on n8n Cloud, so a `new URL(...)`-based version silently fell\n// through to the error branch.\n// Rules: scheme must be http/https; host lowercased; fragment dropped;\n// trailing slash on non-root paths dropped; query preserved verbatim.\n// On invalid input emit one item with valid=false plus _error.code so the\n// downstream Switch routes to the unified error builder.\nconst URL_RE = /^(https?):\\/\\/([^\\s/?#]+)(\\/[^?#]*)?(\\?[^#]*)?(#.*)?$/i;\nconst AUTHORITY_RE = /^([^:]+)(?::(\\d+))?$/;\nfunction normalizeUrl(raw) {\n  if (typeof raw !== 'string') return null;\n  const t = raw.trim();\n  if (t === '') return null;\n  const m = t.match(URL_RE);\n  if (!m) return null;\n  const auth = m[2].match(AUTHORITY_RE);\n  if (!auth || !auth[1]) return null;\n  const protocol = m[1].toLowerCase() + ':';\n  const host = auth[1].toLowerCase();\n  const port = auth[2] ? `:${auth[2]}` : '';\n  let path = m[3] || '/';\n  if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);\n  const search = m[4] || '';\n  return `${protocol}//${host}${port}${path}${search}`;\n}\n\nconst items = $input.all();\nreturn items.map((item) => {\n  const m = item.json || {};\n  const text = (m.message && m.message.text) || '';\n  const chatId = String((m.message && m.message.chat && m.message.chat.id) || '');\n  const match = text.match(/^\\/learn(?:@\\w+)?(?:\\s+(.*))?$/);\n  const originalUrl = match && match[1] ? match[1].trim() : '';\n  const normalizedUrl = normalizeUrl(originalUrl);\n  const valid = !!(chatId && normalizedUrl);\n  const code = originalUrl === '' ? 'no_url' : 'invalid_url';\n  return {\n    json: {\n      ...m,\n      _learn: {\n        chatId,\n        originalUrl,\n        normalizedUrl: normalizedUrl || '',\n        valid,\n        reason: valid ? null : code,\n        _error: valid ? null : { code },\n      },\n    },\n  };\n});\n"
+        "jsCode": "// Extract the URL argument from `/learn <url>` and normalise it for dedup.\n// Regex-based parser mirrors task-3/lib/urlNormalizer.js verbatim \u2014 the\n// WHATWG `URL` constructor is not exposed inside the n8n Code-node task-runner\n// sandbox on n8n Cloud, so a `new URL(...)`-based version silently fell\n// through to the error branch.\n// Rules: scheme must be http/https; host lowercased; fragment dropped;\n// trailing slash on non-root paths dropped; query preserved verbatim.\n// On invalid input emit one item with valid=false plus _error.code so the\n// downstream Switch routes to the unified error builder.\nconst URL_RE = /^(https?):\\/\\/([^\\s/?#]+)(\\/[^?#]*)?(\\?[^#]*)?(#.*)?$/i;\nconst AUTHORITY_RE = /^([^:]+)(?::(\\d+))?$/;\nfunction normalizeUrl(raw) {\n  if (typeof raw !== 'string') return null;\n  const t = raw.trim();\n  if (t === '') return null;\n  const m = t.match(URL_RE);\n  if (!m) return null;\n  const auth = m[2].match(AUTHORITY_RE);\n  if (!auth || !auth[1]) return null;\n  const protocol = m[1].toLowerCase() + ':';\n  const host = auth[1].toLowerCase();\n  const port = auth[2] ? `:${auth[2]}` : '';\n  let path = m[3] || '/';\n  if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);\n  const search = m[4] || '';\n  return `${protocol}//${host}${port}${path}${search}`;\n}\n\nconst items = $input.all();\nreturn items.map((item) => {\n  const m = item.json || {};\n  const text = (m.message && m.message.text) || '';\n  const chatId = String((m.message && m.message.chat && m.message.chat.id) || '');\n  const match = text.match(/^\\/learn(?:@\\w+)?(?:\\s+(.*))?$/);\n  const originalUrl = match && match[1] ? match[1].trim() : '';\n  const normalizedUrl = normalizeUrl(originalUrl);\n  const valid = !!(chatId && normalizedUrl);\n  const code = originalUrl === '' ? 'no_url' : 'invalid_url';\n  return {\n    json: {\n      ...m,\n      _learn: {\n        chatId,\n        originalUrl,\n        normalizedUrl: normalizedUrl || '',\n        valid,\n        reason: valid ? null : code,\n        _error: valid ? null : { code },\n      },\n    },\n  };\n});\n"
       }
     },
     {
@@ -282,7 +300,10 @@
       "name": "/learn valid?",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
-      "position": [880, -460],
+      "position": [
+        880,
+        -460
+      ],
       "parameters": {
         "mode": "rules",
         "rules": {
@@ -325,7 +346,10 @@
       "name": "/learn content ok?",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
-      "position": [2080, -260],
+      "position": [
+        2080,
+        -260
+      ],
       "parameters": {
         "mode": "rules",
         "rules": {
@@ -368,7 +392,10 @@
       "name": "/learn Teacher ok?",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
-      "position": [2800, -260],
+      "position": [
+        2800,
+        -260
+      ],
       "parameters": {
         "mode": "rules",
         "rules": {
@@ -411,7 +438,10 @@
       "name": "/learn Teacher retry prompt",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [3040, -260],
+      "position": [
+        3040,
+        -260
+      ],
       "parameters": {
         "mode": "manual",
         "duplicateItem": false,
@@ -421,7 +451,7 @@
               "id": "teacher-retry-prompt-1",
               "name": "prompt",
               "type": "string",
-              "value": "=The previous response did not match the required JSON schema. You MUST return ONLY a single valid JSON object — no prose, no explanations, no code fences, no extra fields.\n\nSchema (exact):\n{\n  \"title\": string (non-empty, max 120 chars),\n  \"mainConcepts\": array of 3 to 5 non-empty strings,\n  \"keyPoints\": array of 5 to 7 non-empty strings,\n  \"difficulty\": one of \"beginner\" | \"intermediate\" | \"advanced\"\n}\n\nReturn only that JSON object. Now summarise the content below.\n\n--- BEGIN CONTENT ---\n{{ $json._learn.extractedContent }}\n--- END CONTENT ---"
+              "value": "=The previous response did not match the required JSON schema. You MUST return ONLY a single valid JSON object \u2014 no prose, no explanations, no code fences, no extra fields.\n\nSchema (exact):\n{\n  \"title\": string (non-empty, max 120 chars),\n  \"mainConcepts\": array of 3 to 5 non-empty strings,\n  \"keyPoints\": array of 5 to 7 non-empty strings,\n  \"difficulty\": one of \"beginner\" | \"intermediate\" | \"advanced\"\n}\n\nReturn only that JSON object. Now summarise the content below.\n\n--- BEGIN CONTENT ---\n{{ $json._learn.extractedContent }}\n--- END CONTENT ---"
             },
             {
               "id": "teacher-retry-learn-passthrough",
@@ -439,7 +469,10 @@
       "name": "/learn Teacher retry chain",
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "typeVersion": 1.7,
-      "position": [3280, -260],
+      "position": [
+        3280,
+        -260
+      ],
       "parameters": {
         "promptType": "define",
         "text": "={{ $json.prompt }}",
@@ -451,7 +484,10 @@
       "name": "/learn Teacher retry model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
-      "position": [3280, -100],
+      "position": [
+        3280,
+        -100
+      ],
       "parameters": {
         "model": {
           "__rl": true,
@@ -474,7 +510,10 @@
       "name": "/learn Teacher retry parse",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3520, -260],
+      "position": [
+        3520,
+        -260
+      ],
       "parameters": {
         "language": "javaScript",
         "mode": "runOnceForAllItems",
@@ -486,7 +525,10 @@
       "name": "/learn Teacher retry ok?",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
-      "position": [3760, -260],
+      "position": [
+        3760,
+        -260
+      ],
       "parameters": {
         "mode": "rules",
         "rules": {
@@ -529,11 +571,14 @@
       "name": "/learn build error",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1120, -360],
+      "position": [
+        1120,
+        -360
+      ],
       "parameters": {
         "language": "javaScript",
         "mode": "runOnceForAllItems",
-        "jsCode": "// Unified error-message builder for /learn failures (PRD error table\n// rows #1, #2, #3, #4, #5, #7, #8). The error code is set by whichever\n// upstream Code node detected the failure and routed here via a Switch.\n// Telegram parse_mode is HTML — pure dynamic fields are escaped, static\n// markup (<code> ... </code>) is interpolated verbatim.\nfunction htmlEscape(v) {\n  if (v === null || v === undefined) return '';\n  const s = typeof v === 'string' ? v : String(v);\n  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\n\nconst items = $input.all();\nreturn items.map((item) => {\n  const learn = (item.json && item.json._learn) || {};\n  const chatId = learn.chatId;\n  const err = learn._error || { code: 'unknown' };\n  let html;\n  switch (err.code) {\n    case 'no_url':\n    case 'invalid_url':\n      html = 'Send a URL after /learn, e.g. <code>/learn https://example.com/article</code>';\n      break;\n    case 'jina_4xx':\n    case 'jina_5xx':\n      html = `I couldn\\u2019t fetch that page (status ${htmlEscape(err.status)}). Try a different URL?`;\n      break;\n    case 'jina_network':\n      html = 'I couldn\\u2019t fetch that page (network error). Try a different URL?';\n      break;\n    case 'too_short':\n      html = 'That page doesn\\u2019t have enough content for me to summarize. Try a different URL?';\n      break;\n    case 'teacher_failed':\n      html = 'Sorry, I had trouble processing this one. Try /learn again, or pick a different URL?';\n      break;\n    default:\n      html = 'Something went wrong. Try again?';\n  }\n  return { json: { _render: { chatId, html }, _learn: learn } };\n});\n"
+        "jsCode": "// Unified error-message builder for /learn failures (PRD error table\n// rows #1, #2, #3, #4, #5, #7, #8). The error code is set by whichever\n// upstream Code node detected the failure and routed here via a Switch.\n// Telegram parse_mode is HTML \u2014 pure dynamic fields are escaped, static\n// markup (<code> ... </code>) is interpolated verbatim.\nfunction htmlEscape(v) {\n  if (v === null || v === undefined) return '';\n  const s = typeof v === 'string' ? v : String(v);\n  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\n\nconst items = $input.all();\nreturn items.map((item) => {\n  const learn = (item.json && item.json._learn) || {};\n  const chatId = learn.chatId;\n  const err = learn._error || { code: 'unknown' };\n  let html;\n  switch (err.code) {\n    case 'no_url':\n    case 'invalid_url':\n      html = 'Send a URL after /learn, e.g. <code>/learn https://example.com/article</code>';\n      break;\n    case 'jina_4xx':\n    case 'jina_5xx':\n      html = `I couldn\\u2019t fetch that page (status ${htmlEscape(err.status)}). Try a different URL?`;\n      break;\n    case 'jina_network':\n      html = 'I couldn\\u2019t fetch that page (network error). Try a different URL?';\n      break;\n    case 'too_short':\n      html = 'That page doesn\\u2019t have enough content for me to summarize. Try a different URL?';\n      break;\n    case 'teacher_failed':\n      html = 'Sorry, I had trouble processing this one. Try /learn again, or pick a different URL?';\n      break;\n    default:\n      html = 'Something went wrong. Try again?';\n  }\n  return { json: { _render: { chatId, html }, _learn: learn } };\n});\n"
       }
     },
     {
@@ -541,7 +586,10 @@
       "name": "/learn send error",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [1360, -360],
+      "position": [
+        1360,
+        -360
+      ],
       "parameters": {
         "resource": "message",
         "operation": "sendMessage",
@@ -564,7 +612,10 @@
       "name": "/learn dedup lookup",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
-      "position": [1120, -560],
+      "position": [
+        1120,
+        -560
+      ],
       "parameters": {
         "resource": "row",
         "operation": "get",
@@ -598,7 +649,10 @@
       "name": "/learn classify cache",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1360, -560],
+      "position": [
+        1360,
+        -560
+      ],
       "parameters": {
         "language": "javaScript",
         "mode": "runOnceForAllItems",
@@ -610,7 +664,10 @@
       "name": "/learn cache hit?",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
-      "position": [1600, -560],
+      "position": [
+        1600,
+        -560
+      ],
       "parameters": {
         "mode": "rules",
         "rules": {
@@ -653,7 +710,10 @@
       "name": "/learn Jina fetch",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1840, -440],
+      "position": [
+        1840,
+        -440
+      ],
       "onError": "continueErrorOutput",
       "parameters": {
         "url": "=https://r.jina.ai/{{ encodeURI($json._learn.originalUrl) }}",
@@ -674,11 +734,14 @@
       "name": "/learn extract content",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2080, -440],
+      "position": [
+        2080,
+        -440
+      ],
       "parameters": {
         "language": "javaScript",
         "mode": "runOnceForAllItems",
-        "jsCode": "// Classify the Jina response and prepare extracted content.\n// Three concerns merged here to keep the topology flat (PRD error rules #3, #4, #5, #6):\n//   1. Status check — HTTP node runs with neverError+fullResponse, so 4xx/5xx land here\n//      with a numeric statusCode. Timeouts / network errors arrive via the error\n//      output (onError=continueErrorOutput) and lack statusCode entirely.\n//   2. Length floor — under 500 chars (post-trim) → too_short error.\n//   3. Token budget — over ~30k tokens (≈120k chars) → silent head-truncate.\n// Emits _learn with either _error set (failure paths) or extractedContent set (happy path).\nconst MAX_CHARS = 120000;\nconst MIN_CHARS = 500;\nconst learnCtx = $('/learn parse + normalize').first().json._learn;\nconst item = $input.first().json || {};\n\nif (typeof item.statusCode !== 'number') {\n  return [{ json: { _learn: { ...learnCtx, _error: { code: 'jina_network' } } } }];\n}\nconst status = item.statusCode;\nif (status >= 400) {\n  const code = status >= 500 ? 'jina_5xx' : 'jina_4xx';\n  return [{ json: { _learn: { ...learnCtx, _error: { code, status } } } }];\n}\n\n// 2xx — body is a string under responseFormat=text + fullResponse=true.\nlet raw = '';\nif (typeof item.body === 'string') raw = item.body;\nelse if (typeof item.data === 'string') raw = item.data;\nelse if (typeof item === 'string') raw = item;\nelse raw = JSON.stringify(item.body || item);\n\nconst trimmedLen = raw.trim().length;\nif (trimmedLen < MIN_CHARS) {\n  return [{ json: { _learn: { ...learnCtx, _error: { code: 'too_short', charCount: trimmedLen } } } }];\n}\n\nconst truncated = raw.length > MAX_CHARS ? raw.slice(0, MAX_CHARS) : raw;\nreturn [{\n  json: {\n    _learn: {\n      ...learnCtx,\n      extractedContent: truncated,\n      originalLength: raw.length,\n      truncated: raw.length > MAX_CHARS,\n      truncatedLength: truncated.length,\n    },\n  },\n}];\n"
+        "jsCode": "// Classify the Jina response and prepare extracted content.\n// Three concerns merged here to keep the topology flat (PRD error rules #3, #4, #5, #6):\n//   1. Status check \u2014 HTTP node runs with neverError+fullResponse, so 4xx/5xx land here\n//      with a numeric statusCode. Timeouts / network errors arrive via the error\n//      output (onError=continueErrorOutput) and lack statusCode entirely.\n//   2. Length floor \u2014 under 500 chars (post-trim) \u2192 too_short error.\n//   3. Token budget \u2014 over ~30k tokens (\u2248120k chars) \u2192 silent head-truncate.\n// Emits _learn with either _error set (failure paths) or extractedContent set (happy path).\nconst MAX_CHARS = 120000;\nconst MIN_CHARS = 500;\nconst learnCtx = $('/learn parse + normalize').first().json._learn;\nconst item = $input.first().json || {};\n\nif (typeof item.statusCode !== 'number') {\n  return [{ json: { _learn: { ...learnCtx, _error: { code: 'jina_network' } } } }];\n}\nconst status = item.statusCode;\nif (status >= 400) {\n  const code = status >= 500 ? 'jina_5xx' : 'jina_4xx';\n  return [{ json: { _learn: { ...learnCtx, _error: { code, status } } } }];\n}\n\n// 2xx \u2014 body is a string under responseFormat=text + fullResponse=true.\nlet raw = '';\nif (typeof item.body === 'string') raw = item.body;\nelse if (typeof item.data === 'string') raw = item.data;\nelse if (typeof item === 'string') raw = item;\nelse raw = JSON.stringify(item.body || item);\n\nconst trimmedLen = raw.trim().length;\nif (trimmedLen < MIN_CHARS) {\n  return [{ json: { _learn: { ...learnCtx, _error: { code: 'too_short', charCount: trimmedLen } } } }];\n}\n\nconst truncated = raw.length > MAX_CHARS ? raw.slice(0, MAX_CHARS) : raw;\nreturn [{\n  json: {\n    _learn: {\n      ...learnCtx,\n      extractedContent: truncated,\n      originalLength: raw.length,\n      truncated: raw.length > MAX_CHARS,\n      truncatedLength: truncated.length,\n    },\n  },\n}];\n"
       }
     },
     {
@@ -686,7 +749,10 @@
       "name": "/learn Teacher prompt",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [2320, -440],
+      "position": [
+        2320,
+        -440
+      ],
       "parameters": {
         "mode": "manual",
         "duplicateItem": false,
@@ -714,7 +780,10 @@
       "name": "/learn Teacher chain",
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "typeVersion": 1.7,
-      "position": [2560, -440],
+      "position": [
+        2560,
+        -440
+      ],
       "parameters": {
         "promptType": "define",
         "text": "={{ $json.prompt }}",
@@ -726,7 +795,10 @@
       "name": "/learn Teacher model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
-      "position": [2560, -260],
+      "position": [
+        2560,
+        -260
+      ],
       "parameters": {
         "model": {
           "__rl": true,
@@ -749,11 +821,14 @@
       "name": "/learn Teacher parse",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2800, -440],
+      "position": [
+        2800,
+        -440
+      ],
       "parameters": {
         "language": "javaScript",
         "mode": "runOnceForAllItems",
-        "jsCode": "// Validate the first Teacher response into the Summary shape.\n// Mirrors task-3/lib/teacherOutputParser.js — same { code, message } error\n// shape so the lib unit tests document the contract that the workflow runs.\n// On failure emits _learn with _teacherFailed=true (carrying the raw response\n// and structured parse error) so the downstream Switch routes to the retry\n// sub-flow. On success emits _learn with the parsed Summary plus shortId.\nconst DIFFICULTY = new Set(['beginner', 'intermediate', 'advanced']);\nfunction isNonEmptyString(v) { return typeof v === 'string' && v.trim().length > 0; }\nfunction isStrArr(v, min, max) {\n  if (!Array.isArray(v)) return false;\n  if (v.length < min || v.length > max) return false;\n  return v.every(isNonEmptyString);\n}\nfunction parseTeacher(raw) {\n  let p;\n  try { p = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return { ok: false, error: { code: 'not_json', message: 'Teacher output is not valid JSON' } }; }\n  if (p === null || typeof p !== 'object' || Array.isArray(p)) return { ok: false, error: { code: 'not_object', message: 'Teacher output is not a JSON object' } };\n  if (!isNonEmptyString(p.title)) return { ok: false, error: { code: 'schema', message: 'title is missing or empty' } };\n  if (!isStrArr(p.mainConcepts, 3, 5)) return { ok: false, error: { code: 'schema', message: 'mainConcepts must be an array of 3..5 non-empty strings' } };\n  if (!isStrArr(p.keyPoints, 5, 7)) return { ok: false, error: { code: 'schema', message: 'keyPoints must be an array of 5..7 non-empty strings' } };\n  if (!DIFFICULTY.has(p.difficulty)) return { ok: false, error: { code: 'schema', message: 'difficulty must be beginner | intermediate | advanced' } };\n  return { ok: true, value: { title: p.title.trim(), mainConcepts: p.mainConcepts.map((s) => s.trim()), keyPoints: p.keyPoints.map((s) => s.trim()), difficulty: p.difficulty } };\n}\n\n// djb2 hash for the deterministic 8-char short_id.\nfunction mintShortId(seed) {\n  const s = seed === null || seed === undefined ? '' : String(seed);\n  let h = 5381;\n  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;\n  return h.toString(36).padStart(8, '0').slice(0, 8);\n}\n\nconst learnCtx = $('/learn extract content').first().json._learn;\nconst chainItem = $input.first().json;\nconst rawText = (typeof chainItem.text === 'string' ? chainItem.text : (typeof chainItem.output === 'string' ? chainItem.output : JSON.stringify(chainItem)));\nconst result = parseTeacher(rawText);\nif (!result.ok) {\n  // Forward extractedContent so the retry prompt Set node can re-interpolate it,\n  // and the raw response for logging (PRD error rules #7/#8).\n  return [{\n    json: {\n      _learn: {\n        ...learnCtx,\n        _teacherFailed: true,\n        _teacherError: result.error,\n        _teacherRawFirst: rawText,\n      },\n    },\n  }];\n}\nconst summary = result.value;\nconst shortId = mintShortId(`${learnCtx.chatId}|${learnCtx.normalizedUrl}`);\nreturn [{\n  json: {\n    _learn: {\n      ...learnCtx,\n      cached: true,\n      shortId,\n      summary,\n    },\n  },\n}];\n"
+        "jsCode": "// Validate the first Teacher response into the Summary shape.\n// Mirrors task-3/lib/teacherOutputParser.js \u2014 same { code, message } error\n// shape so the lib unit tests document the contract that the workflow runs.\n// On failure emits _learn with _teacherFailed=true (carrying the raw response\n// and structured parse error) so the downstream Switch routes to the retry\n// sub-flow. On success emits _learn with the parsed Summary plus shortId.\nconst DIFFICULTY = new Set(['beginner', 'intermediate', 'advanced']);\nfunction isNonEmptyString(v) { return typeof v === 'string' && v.trim().length > 0; }\nfunction isStrArr(v, min, max) {\n  if (!Array.isArray(v)) return false;\n  if (v.length < min || v.length > max) return false;\n  return v.every(isNonEmptyString);\n}\nfunction parseTeacher(raw) {\n  let p;\n  try { p = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return { ok: false, error: { code: 'not_json', message: 'Teacher output is not valid JSON' } }; }\n  if (p === null || typeof p !== 'object' || Array.isArray(p)) return { ok: false, error: { code: 'not_object', message: 'Teacher output is not a JSON object' } };\n  if (!isNonEmptyString(p.title)) return { ok: false, error: { code: 'schema', message: 'title is missing or empty' } };\n  if (!isStrArr(p.mainConcepts, 3, 5)) return { ok: false, error: { code: 'schema', message: 'mainConcepts must be an array of 3..5 non-empty strings' } };\n  if (!isStrArr(p.keyPoints, 5, 7)) return { ok: false, error: { code: 'schema', message: 'keyPoints must be an array of 5..7 non-empty strings' } };\n  if (!DIFFICULTY.has(p.difficulty)) return { ok: false, error: { code: 'schema', message: 'difficulty must be beginner | intermediate | advanced' } };\n  return { ok: true, value: { title: p.title.trim(), mainConcepts: p.mainConcepts.map((s) => s.trim()), keyPoints: p.keyPoints.map((s) => s.trim()), difficulty: p.difficulty } };\n}\n\n// djb2 hash for the deterministic 8-char short_id.\nfunction mintShortId(seed) {\n  const s = seed === null || seed === undefined ? '' : String(seed);\n  let h = 5381;\n  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;\n  return h.toString(36).padStart(8, '0').slice(0, 8);\n}\n\nconst learnCtx = $('/learn extract content').first().json._learn;\nconst chainItem = $input.first().json;\nconst rawText = (typeof chainItem.text === 'string' ? chainItem.text : (typeof chainItem.output === 'string' ? chainItem.output : JSON.stringify(chainItem)));\nconst result = parseTeacher(rawText);\nif (!result.ok) {\n  // Forward extractedContent so the retry prompt Set node can re-interpolate it,\n  // and the raw response for logging (PRD error rules #7/#8).\n  return [{\n    json: {\n      _learn: {\n        ...learnCtx,\n        _teacherFailed: true,\n        _teacherError: result.error,\n        _teacherRawFirst: rawText,\n      },\n    },\n  }];\n}\nconst summary = result.value;\nconst shortId = mintShortId(`${learnCtx.chatId}|${learnCtx.normalizedUrl}`);\nreturn [{\n  json: {\n    _learn: {\n      ...learnCtx,\n      cached: true,\n      shortId,\n      summary,\n    },\n  },\n}];\n"
       }
     },
     {
@@ -761,7 +836,10 @@
       "name": "/learn insert material",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
-      "position": [3040, -440],
+      "position": [
+        3040,
+        -440
+      ],
       "parameters": {
         "resource": "row",
         "operation": "insert",
@@ -786,15 +864,69 @@
           },
           "matchingColumns": [],
           "schema": [
-            { "id": "chat_id", "displayName": "chat_id", "type": "string", "canBeUsedToMatch": true, "removed": false },
-            { "id": "short_id", "displayName": "short_id", "type": "string", "canBeUsedToMatch": true, "removed": false },
-            { "id": "url", "displayName": "url", "type": "string", "canBeUsedToMatch": true, "removed": false },
-            { "id": "title", "displayName": "title", "type": "string", "canBeUsedToMatch": true, "removed": false },
-            { "id": "extracted_content", "displayName": "extracted_content", "type": "string", "canBeUsedToMatch": true, "removed": false },
-            { "id": "main_concepts", "displayName": "main_concepts", "type": "string", "canBeUsedToMatch": true, "removed": false },
-            { "id": "key_points", "displayName": "key_points", "type": "string", "canBeUsedToMatch": true, "removed": false },
-            { "id": "difficulty", "displayName": "difficulty", "type": "string", "canBeUsedToMatch": true, "removed": false },
-            { "id": "added_date", "displayName": "added_date", "type": "date", "canBeUsedToMatch": true, "removed": false }
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "short_id",
+              "displayName": "short_id",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "url",
+              "displayName": "url",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "extracted_content",
+              "displayName": "extracted_content",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "main_concepts",
+              "displayName": "main_concepts",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "key_points",
+              "displayName": "key_points",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "difficulty",
+              "displayName": "difficulty",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "added_date",
+              "displayName": "added_date",
+              "type": "date",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
           ],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
@@ -807,11 +939,14 @@
       "name": "/learn forward summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3280, -440],
+      "position": [
+        3280,
+        -440
+      ],
       "parameters": {
         "language": "javaScript",
         "mode": "runOnceForAllItems",
-        "jsCode": "// The Data Table insert node emits the inserted row's columns; we don't\n// need them — we already carry the Summary in our context. Re-emit the\n// _learn context from whichever Teacher parse actually produced the Summary\n// (retry parse if the first attempt failed; original parse otherwise).\n// Reading the original parse unconditionally — as the slice-3 first cut did —\n// would render the FAILED first-attempt context on retry-success and ship a\n// blank/garbled summary while the Data Table row was correct (S3-HIGH-002).\nfunction pick(nodeName) {\n  try {\n    const item = $(nodeName).first();\n    if (item && item.json && item.json._learn && item.json._learn.summary) {\n      return item.json._learn;\n    }\n  } catch (_) { /* node didn't run on this branch */ }\n  return null;\n}\nconst learnCtx = pick('/learn Teacher retry parse') || pick('/learn Teacher parse') || {};\nreturn [{ json: { _learn: learnCtx } }];\n"
+        "jsCode": "// The Data Table insert node emits the inserted row's columns; we don't\n// need them \u2014 we already carry the Summary in our context. Re-emit the\n// _learn context from whichever Teacher parse actually produced the Summary\n// (retry parse if the first attempt failed; original parse otherwise).\n// Reading the original parse unconditionally \u2014 as the slice-3 first cut did \u2014\n// would render the FAILED first-attempt context on retry-success and ship a\n// blank/garbled summary while the Data Table row was correct (S3-HIGH-002).\nfunction pick(nodeName) {\n  try {\n    const item = $(nodeName).first();\n    if (item && item.json && item.json._learn && item.json._learn.summary) {\n      return item.json._learn;\n    }\n  } catch (_) { /* node didn't run on this branch */ }\n  return null;\n}\nconst learnCtx = pick('/learn Teacher retry parse') || pick('/learn Teacher parse') || {};\nreturn [{ json: { _learn: learnCtx } }];\n"
       }
     },
     {
@@ -819,11 +954,14 @@
       "name": "/learn render summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3520, -560],
+      "position": [
+        3520,
+        -560
+      ],
       "parameters": {
         "language": "javaScript",
         "mode": "runOnceForAllItems",
-        "jsCode": "// Render the Summary into the Telegram HTML body + inline keyboard.\n// Mirrors task-3/lib/summaryRenderer.js. Every dynamic field is routed\n// through htmlEscape; static markup (`<b>`, newlines, emojis) is verbatim.\nfunction htmlEscape(v) {\n  if (v === null || v === undefined) return '';\n  const s = typeof v === 'string' ? v : String(v);\n  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\nconst BADGES = { beginner: '🟢', intermediate: '🟡', advanced: '🔴' };\nconst items = $input.all();\nreturn items.map((item) => {\n  const c = (item.json && item.json._learn) || {};\n  const summary = c.summary || {};\n  const shortId = c.shortId || '';\n  const badge = BADGES[summary.difficulty] || '⚪';\n  const known = badge !== '⚪';\n  const label = known ? summary.difficulty.charAt(0).toUpperCase() + summary.difficulty.slice(1) : 'Unknown';\n  const titleHtml = htmlEscape(summary.title);\n  const conceptsHtml = (summary.mainConcepts || []).map((x) => `• ${htmlEscape(x)}`).join('\\n');\n  const pointsHtml = (summary.keyPoints || []).map((x) => `• ${htmlEscape(x)}`).join('\\n');\n  const html = [\n    `<b>${titleHtml}</b>`,\n    `${badge} <b>Difficulty:</b> ${htmlEscape(label)}`,\n    '',\n    '<b>Main concepts</b>',\n    conceptsHtml,\n    '',\n    '<b>Key points</b>',\n    pointsHtml,\n  ].join('\\n');\n  return {\n    json: {\n      _learn: c,\n      _render: {\n        chatId: c.chatId,\n        html,\n        callbackData: `qstart:${shortId}`,\n      },\n    },\n  };\n});\n"
+        "jsCode": "// Render the Summary into the Telegram HTML body + inline keyboard.\n// Mirrors task-3/lib/summaryRenderer.js. Every dynamic field is routed\n// through htmlEscape; static markup (`<b>`, newlines, emojis) is verbatim.\nfunction htmlEscape(v) {\n  if (v === null || v === undefined) return '';\n  const s = typeof v === 'string' ? v : String(v);\n  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\nconst BADGES = { beginner: '\ud83d\udfe2', intermediate: '\ud83d\udfe1', advanced: '\ud83d\udd34' };\nconst items = $input.all();\nreturn items.map((item) => {\n  const c = (item.json && item.json._learn) || {};\n  const summary = c.summary || {};\n  const shortId = c.shortId || '';\n  const badge = BADGES[summary.difficulty] || '\u26aa';\n  const known = badge !== '\u26aa';\n  const label = known ? summary.difficulty.charAt(0).toUpperCase() + summary.difficulty.slice(1) : 'Unknown';\n  const titleHtml = htmlEscape(summary.title);\n  const conceptsHtml = (summary.mainConcepts || []).map((x) => `\u2022 ${htmlEscape(x)}`).join('\\n');\n  const pointsHtml = (summary.keyPoints || []).map((x) => `\u2022 ${htmlEscape(x)}`).join('\\n');\n  const html = [\n    `<b>${titleHtml}</b>`,\n    `${badge} <b>Difficulty:</b> ${htmlEscape(label)}`,\n    '',\n    '<b>Main concepts</b>',\n    conceptsHtml,\n    '',\n    '<b>Key points</b>',\n    pointsHtml,\n  ].join('\\n');\n  return {\n    json: {\n      _learn: c,\n      _render: {\n        chatId: c.chatId,\n        html,\n        callbackData: `qstart:${shortId}`,\n      },\n    },\n  };\n});\n"
       }
     },
     {
@@ -831,7 +969,10 @@
       "name": "/learn send summary",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [3760, -560],
+      "position": [
+        3760,
+        -560
+      ],
       "parameters": {
         "resource": "message",
         "operation": "sendMessage",
@@ -844,7 +985,7 @@
               "row": {
                 "buttons": [
                   {
-                    "text": "🧠 Quiz me now",
+                    "text": "\ud83e\udde0 Quiz me now",
                     "additionalFields": {
                       "callback_data": "={{ $json._render.callbackData }}"
                     }
@@ -867,204 +1008,3963 @@
       }
     },
     {
-      "id": "stub-quiz",
-      "name": "/quiz stub (slice 4)",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [640, -280],
-      "parameters": {}
+      "id": "quiz-fetch",
+      "name": "/quiz fetch materials",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        640,
+        -280
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YTppSzT6PJAusGVr",
+          "cachedResultName": "materials"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "chat_id",
+              "condition": "eq",
+              "keyValue": "={{ String($json.message.chat.id) }}"
+            }
+          ]
+        },
+        "orderBy": true,
+        "orderByColumn": "added_date",
+        "orderByDirection": "DESC",
+        "returnAll": true
+      },
+      "alwaysOutputData": true
     },
     {
-      "id": "stub-qa",
-      "name": "qa: stub (slice 5)",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [640, -100],
-      "parameters": {}
+      "id": "quiz-build",
+      "name": "/quiz build picker",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -280
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Build the topic picker for /quiz. Mirrors task-3/lib/topicPickerBuilder.js.\n// Body is a numbered list of materials; keyboard is a STATIC 3-row layout\n// (2 grid rows of 4 numbered buttons + 1 pagination row of 3 buttons). This\n// shape is dictated by an n8n platform constraint discovered in slice 4:\n// the Telegram node v1.2 inlineKeyboard.rows fixedCollection is\n// statically-sized at design time, so the only way to render with a fixed\n// node config is to pre-declare exactly 3 rows whose per-cell values are\n// expression-driven. Dynamic-length keyboards would need an HTTP Request\n// to the Bot API with the token in the URL via $vars/$env \u2014 not available\n// on the user's n8n Cloud plan.\nfunction htmlEscape(v) {\n  if (v === null || v === undefined) return '';\n  const s = typeof v === 'string' ? v : String(v);\n  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\nconst DIFFICULTY_EMOJI = { beginner: '\ud83d\udfe2', intermediate: '\ud83d\udfe1', advanced: '\ud83d\udd34' };\nconst PAGE_SIZE = 8;\nconst GRID_SIZE = 8;\nconst HEADER = '<b>\ud83d\udcda Pick a material to quiz on:</b>';\nconst PREV = '\u2b05\ufe0f Prev';\nconst NEXT = 'Next \u27a1\ufe0f';\nconst NOOP_TEXT = '\u2800';\nconst EMPTY_HTML = \"You haven't saved any materials yet. Send /learn &lt;URL&gt; to add one.\";\n\nconst trigger = $('Telegram Trigger').first().json;\nconst chatId = String((trigger.message && trigger.message.chat && trigger.message.chat.id) || '');\nconst materials = $input.all().map((it) => it.json).filter((r) => r && r.short_id);\n\nif (materials.length === 0) {\n  // Empty-state branch: routed to a separate Telegram node that omits the keyboard.\n  return [{ json: { _picker: { chatId, empty: true, hasKeyboard: false, html: EMPTY_HTML, gridButtons: null, paginationButtons: null, page: 0, totalPages: 0 } } }];\n}\n\nconst page = 0;\nconst totalPages = Math.max(1, Math.ceil(materials.length / PAGE_SIZE));\nconst slice = materials.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);\nconst lines = slice.map((m, i) => {\n  const emoji = DIFFICULTY_EMOJI[m.difficulty] || '\u26aa';\n  const title = m.title == null ? '' : String(m.title);\n  return `${i + 1}. ${emoji} ${htmlEscape(title)}`;\n});\nconst pageLine = totalPages > 1 ? `\\n<i>Page ${page + 1} of ${totalPages}</i>` : '';\nconst html = `${HEADER}${pageLine}\\n\\n${lines.join('\\n')}`;\nconst noopCb = `tpp:${page}`;\nconst gridButtons = [];\nfor (let i = 0; i < GRID_SIZE; i++) {\n  if (i < slice.length) gridButtons.push({ text: String(i + 1), callback_data: `tp:${slice[i].short_id}` });\n  else gridButtons.push({ text: NOOP_TEXT, callback_data: noopCb });\n}\nconst prevPage = totalPages > 1 ? (page > 0 ? page - 1 : totalPages - 1) : page;\nconst nextPage = totalPages > 1 ? (page < totalPages - 1 ? page + 1 : 0) : page;\nconst paginationButtons = [\n  { text: totalPages > 1 ? PREV : NOOP_TEXT, callback_data: `tpp:${prevPage}` },\n  { text: `Page ${page + 1}/${totalPages}`, callback_data: `tpp:${page}` },\n  { text: totalPages > 1 ? NEXT : NOOP_TEXT, callback_data: `tpp:${nextPage}` },\n];\nreturn [{ json: { _picker: { chatId, empty: false, hasKeyboard: true, html, gridButtons, paginationButtons, page, totalPages } } }];\n"
+      }
     },
     {
-      "id": "stub-rs",
-      "name": "rs: stub (slice 6)",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [640, 80],
-      "parameters": {}
+      "id": "quiz-switch",
+      "name": "/quiz empty or picker?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1120,
+        -280
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "quiz-has-keyboard",
+                    "leftValue": "={{ $json._picker.hasKeyboard }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "picker"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "empty"
+        }
+      }
     },
     {
-      "id": "stub-tp",
-      "name": "tp: stub (slice 4)",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [640, 260],
-      "parameters": {}
+      "id": "quiz-send-picker",
+      "name": "/quiz send picker",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1360,
+        -380
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json._picker.chatId }}",
+        "text": "={{ $json._picker.html }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._picker.gridButtons[0].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.gridButtons[0].callback_data }}"
+                    }
+                  },
+                  {
+                    "text": "={{ $json._picker.gridButtons[1].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.gridButtons[1].callback_data }}"
+                    }
+                  },
+                  {
+                    "text": "={{ $json._picker.gridButtons[2].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.gridButtons[2].callback_data }}"
+                    }
+                  },
+                  {
+                    "text": "={{ $json._picker.gridButtons[3].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.gridButtons[3].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._picker.gridButtons[4].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.gridButtons[4].callback_data }}"
+                    }
+                  },
+                  {
+                    "text": "={{ $json._picker.gridButtons[5].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.gridButtons[5].callback_data }}"
+                    }
+                  },
+                  {
+                    "text": "={{ $json._picker.gridButtons[6].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.gridButtons[6].callback_data }}"
+                    }
+                  },
+                  {
+                    "text": "={{ $json._picker.gridButtons[7].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.gridButtons[7].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._picker.paginationButtons[0].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.paginationButtons[0].callback_data }}"
+                    }
+                  },
+                  {
+                    "text": "={{ $json._picker.paginationButtons[1].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.paginationButtons[1].callback_data }}"
+                    }
+                  },
+                  {
+                    "text": "={{ $json._picker.paginationButtons[2].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.paginationButtons[2].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      }
     },
     {
-      "id": "stub-tpp",
-      "name": "tpp: stub (slice 4)",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [640, 440],
-      "parameters": {}
+      "id": "quiz-send-empty",
+      "name": "/quiz send empty",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1360,
+        -180
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json._picker.chatId }}",
+        "text": "={{ $json._picker.html }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      }
     },
     {
-      "id": "stub-qstart",
-      "name": "qstart: stub (slice 5)",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [640, 620],
-      "parameters": {}
+      "id": "tpp-parse",
+      "name": "tpp: parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        440
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Decode tpp:{pageIdx} and capture every field the picker rebuild + the\n// in-place message edit need. The picker we will edit IS the message\n// hosting the tapped button \u2014 its chat_id and message_id are right in the\n// callback_query payload. Non-numeric / negative pageIdx silently snaps to 0;\n// the downstream picker builder additionally clamps to a valid page.\nconst items = $input.all();\nreturn items.map((item) => {\n  const m = item.json || {};\n  const cq = m.callback_query || {};\n  const msg = cq.message || {};\n  const chatId = String((msg.chat && msg.chat.id) || '');\n  const messageId = msg.message_id != null ? msg.message_id : null;\n  const queryId = String(cq.id || '');\n  const data = String(cq.data || '');\n  let pageIdx = 0;\n  if (data.startsWith('tpp:')) {\n    const rest = data.slice(4);\n    if (/^\\d+$/.test(rest)) pageIdx = Number(rest);\n  }\n  return { json: { _tpp: { chatId, messageId, queryId, pageIdx } } };\n});\n"
+      }
+    },
+    {
+      "id": "tpp-fetch",
+      "name": "tpp: fetch materials",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        440
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YTppSzT6PJAusGVr",
+          "cachedResultName": "materials"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "chat_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._tpp.chatId }}"
+            }
+          ]
+        },
+        "orderBy": true,
+        "orderByColumn": "added_date",
+        "orderByDirection": "DESC",
+        "returnAll": true
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "tpp-build",
+      "name": "tpp: build picker",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        440
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Rebuild the topic picker for the requested page using the same numbered-\n// grid layout as /quiz build picker. Reads page from the parse node's\n// _tpp.pageIdx, threads chatId / messageId / queryId through for the\n// downstream edit, and clamps out-of-range pageIdx silently. See the head\n// comment on /quiz build picker for why the keyboard layout is static.\nfunction htmlEscape(v) {\n  if (v === null || v === undefined) return '';\n  const s = typeof v === 'string' ? v : String(v);\n  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\nconst DIFFICULTY_EMOJI = { beginner: '\ud83d\udfe2', intermediate: '\ud83d\udfe1', advanced: '\ud83d\udd34' };\nconst PAGE_SIZE = 8;\nconst GRID_SIZE = 8;\nconst HEADER = '<b>\ud83d\udcda Pick a material to quiz on:</b>';\nconst PREV = '\u2b05\ufe0f Prev';\nconst NEXT = 'Next \u27a1\ufe0f';\nconst NOOP_TEXT = '\u2800';\nconst EMPTY_HTML = \"You haven't saved any materials yet. Send /learn &lt;URL&gt; to add one.\";\n\nconst ctx = $('tpp: parse').first().json._tpp;\nconst { chatId, messageId, queryId, pageIdx } = ctx;\nconst materials = $input.all().map((it) => it.json).filter((r) => r && r.short_id);\n\nif (materials.length === 0) {\n  return [{ json: { _picker: { chatId, messageId, queryId, empty: true, hasKeyboard: false, html: EMPTY_HTML, gridButtons: null, paginationButtons: null, page: 0, totalPages: 0 } } }];\n}\n\nconst totalPages = Math.max(1, Math.ceil(materials.length / PAGE_SIZE));\nconst safePage = Math.min(Math.max(0, pageIdx | 0), totalPages - 1);\nconst slice = materials.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);\nconst lines = slice.map((m, i) => {\n  const emoji = DIFFICULTY_EMOJI[m.difficulty] || '\u26aa';\n  const title = m.title == null ? '' : String(m.title);\n  return `${i + 1}. ${emoji} ${htmlEscape(title)}`;\n});\nconst pageLine = totalPages > 1 ? `\\n<i>Page ${safePage + 1} of ${totalPages}</i>` : '';\nconst html = `${HEADER}${pageLine}\\n\\n${lines.join('\\n')}`;\nconst noopCb = `tpp:${safePage}`;\nconst gridButtons = [];\nfor (let i = 0; i < GRID_SIZE; i++) {\n  if (i < slice.length) gridButtons.push({ text: String(i + 1), callback_data: `tp:${slice[i].short_id}` });\n  else gridButtons.push({ text: NOOP_TEXT, callback_data: noopCb });\n}\nconst prevPage = totalPages > 1 ? (safePage > 0 ? safePage - 1 : totalPages - 1) : safePage;\nconst nextPage = totalPages > 1 ? (safePage < totalPages - 1 ? safePage + 1 : 0) : safePage;\nconst paginationButtons = [\n  { text: totalPages > 1 ? PREV : NOOP_TEXT, callback_data: `tpp:${prevPage}` },\n  { text: `Page ${safePage + 1}/${totalPages}`, callback_data: `tpp:${safePage}` },\n  { text: totalPages > 1 ? NEXT : NOOP_TEXT, callback_data: `tpp:${nextPage}` },\n];\nreturn [{ json: { _picker: { chatId, messageId, queryId, empty: false, hasKeyboard: true, html, gridButtons, paginationButtons, page: safePage, totalPages } } }];\n"
+      }
+    },
+    {
+      "id": "tpp-switch",
+      "name": "tpp: empty or picker?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1360,
+        440
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "tpp-has-keyboard",
+                    "leftValue": "={{ $json._picker.hasKeyboard }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "picker"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "empty"
+        }
+      }
+    },
+    {
+      "id": "tpp-edit-picker",
+      "name": "tpp: edit picker",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1600,
+        360
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "resource": "message",
+        "operation": "editMessageText",
+        "messageType": "message",
+        "chatId": "={{ $json._picker.chatId }}",
+        "messageId": "={{ $json._picker.messageId }}",
+        "text": "={{ $json._picker.html }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._picker.gridButtons[0].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.gridButtons[0].callback_data }}"
+                    }
+                  },
+                  {
+                    "text": "={{ $json._picker.gridButtons[1].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.gridButtons[1].callback_data }}"
+                    }
+                  },
+                  {
+                    "text": "={{ $json._picker.gridButtons[2].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.gridButtons[2].callback_data }}"
+                    }
+                  },
+                  {
+                    "text": "={{ $json._picker.gridButtons[3].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.gridButtons[3].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._picker.gridButtons[4].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.gridButtons[4].callback_data }}"
+                    }
+                  },
+                  {
+                    "text": "={{ $json._picker.gridButtons[5].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.gridButtons[5].callback_data }}"
+                    }
+                  },
+                  {
+                    "text": "={{ $json._picker.gridButtons[6].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.gridButtons[6].callback_data }}"
+                    }
+                  },
+                  {
+                    "text": "={{ $json._picker.gridButtons[7].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.gridButtons[7].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._picker.paginationButtons[0].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.paginationButtons[0].callback_data }}"
+                    }
+                  },
+                  {
+                    "text": "={{ $json._picker.paginationButtons[1].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.paginationButtons[1].callback_data }}"
+                    }
+                  },
+                  {
+                    "text": "={{ $json._picker.paginationButtons[2].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._picker.paginationButtons[2].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      }
+    },
+    {
+      "id": "tpp-edit-empty",
+      "name": "tpp: edit empty",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1600,
+        540
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "editMessageText",
+        "messageType": "message",
+        "chatId": "={{ $json._picker.chatId }}",
+        "messageId": "={{ $json._picker.messageId }}",
+        "text": "={{ $json._picker.html }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      }
+    },
+    {
+      "id": "tpp-ack",
+      "name": "tpp: ack",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        880,
+        280
+      ],
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $json._tpp.queryId }}",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      }
     },
     {
       "id": "stub-unknown",
       "name": "Unknown update (no-op)",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [640, 800],
+      "position": [
+        640,
+        800
+      ],
       "parameters": {}
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Decode tp:{materialShortId}. The picker message hosting the tapped button\n// is the callback_query.message \u2014 we capture its id so the qgen branch can\n// later edit it if needed. The toast text is generic: the spinner clears\n// regardless of whether the Material is found (qgen: classify material\n// rewrites it on failure).\nconst items = $input.all();\nreturn items.map((item) => {\n  const m = item.json || {};\n  const cq = m.callback_query || {};\n  const msg = cq.message || {};\n  const chatId = String((msg.chat && msg.chat.id) || '');\n  const sourceMessageId = msg.message_id != null ? msg.message_id : null;\n  const queryId = String(cq.id || '');\n  const data = String(cq.data || '');\n  const materialShortId = data.startsWith('tp:') ? data.slice(3) : '';\n  return { json: { _qgen: { chatId, sourceMessageId, queryId, materialShortId, source: 'tp', ackToast: '\ud83e\udde0 Generating your quiz\u2026' } } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        260
+      ],
+      "id": "tp: parse",
+      "name": "tp: parse"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Decode qstart:{materialShortId}. Same downstream contract as tp: parse so\n// both branches converge on the same qgen flow with identical _qgen shape.\nconst items = $input.all();\nreturn items.map((item) => {\n  const m = item.json || {};\n  const cq = m.callback_query || {};\n  const msg = cq.message || {};\n  const chatId = String((msg.chat && msg.chat.id) || '');\n  const sourceMessageId = msg.message_id != null ? msg.message_id : null;\n  const queryId = String(cq.id || '');\n  const data = String(cq.data || '');\n  const materialShortId = data.startsWith('qstart:') ? data.slice(7) : '';\n  return { json: { _qgen: { chatId, sourceMessageId, queryId, materialShortId, source: 'qstart', ackToast: '\ud83e\udde0 Generating your quiz\u2026' } } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        620
+      ],
+      "id": "qstart: parse",
+      "name": "qstart: parse"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YTppSzT6PJAusGVr",
+          "cachedResultName": "materials"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "chat_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._qgen.chatId }}"
+            },
+            {
+              "keyName": "short_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._qgen.materialShortId }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        440
+      ],
+      "id": "qgen: fetch material",
+      "name": "qgen: fetch material"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Resolve the source _qgen context (only one of tp:/qstart:/rs:n parse ran)\n// and determine whether the Material lookup hit a row.\n// Per PRD slice-5 handoff: validate that the short_id exists for this\n// (chat_id, short_id) BEFORE we kick off Examiner. A stale/tampered tap\n// must not mutate quizzes state, so failure here aborts before any AI call.\n// Slice 6 adds `rs: prepare qgen` as a third source \u2014 fired after a\n// start-fresh delete, it re-enters the qgen flow with a fresh _qgen.\nfunction readCtx(nodeName) {\n  try {\n    const item = $(nodeName).first();\n    if (item && item.json && item.json._qgen) return item.json._qgen;\n  } catch (_) { /* node didn't run */ }\n  return null;\n}\nconst ctx = readCtx('tp: parse') || readCtx('qstart: parse') || readCtx('rs: prepare qgen') || {};\nconst rows = $input.all().map((it) => it.json).filter((r) => r && r.short_id);\nif (rows.length === 0) {\n  return [{\n    json: {\n      _qgen: {\n        ...ctx,\n        materialFound: false,\n        ackToast: '\u26a0\ufe0f I couldn\u2019t find that material',\n        _error: { code: 'material_missing' },\n      },\n    },\n  }];\n}\nconst r = rows[0];\nreturn [{\n  json: {\n    _qgen: {\n      ...ctx,\n      materialFound: true,\n      material: {\n        short_id: r.short_id,\n        title: r.title,\n        extracted_content: r.extracted_content || '',\n        difficulty: r.difficulty,\n      },\n    },\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        440
+      ],
+      "id": "qgen: classify material",
+      "name": "qgen: classify material"
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $json._qgen.queryId }}",
+        "additionalFields": {
+          "text": "={{ $json._qgen.ackToast }}"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1360,
+        320
+      ],
+      "id": "qgen: ack callback",
+      "name": "qgen: ack callback",
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      },
+      "webhookId": "qgen: ack callback",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "material-found",
+                    "leftValue": "={{ !$json._qgen._error }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ok"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "missing"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1360,
+        540
+      ],
+      "id": "qgen: material ok?",
+      "name": "qgen: material ok?"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json._qgen.chatId }}",
+        "text": "Sorry \u2014 I couldn\u2019t find that material. It may have been deleted. Try /quiz again?",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1600,
+        700
+      ],
+      "id": "qgen: send missing material",
+      "name": "qgen: send missing material",
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      },
+      "webhookId": "qgen: send missing material"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "qgen: Examiner prompt-prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "=You are the Examiner AI. Read the extracted page content below and generate exactly five multiple-choice questions to test the reader's comprehension.\n\nYour response MUST be ONLY a single valid JSON object matching this schema exactly. No prose, no explanations, no code fences, no extra fields.\n\nSchema:\n{\n  \"questions\": [\n    {\n      \"id\": \"Q1\" | \"Q2\" | \"Q3\" | \"Q4\" | \"Q5\",\n      \"question\": string (non-empty),\n      \"options\": [\n        { \"key\": \"A\", \"text\": string (non-empty) },\n        { \"key\": \"B\", \"text\": string (non-empty) },\n        { \"key\": \"C\", \"text\": string (non-empty) },\n        { \"key\": \"D\", \"text\": string (non-empty) }\n      ],\n      \"correctAnswer\": \"A\" | \"B\" | \"C\" | \"D\",\n      \"perOptionExplanation\": {\n        \"A\": string (non-empty),\n        \"B\": string (non-empty),\n        \"C\": string (non-empty),\n        \"D\": string (non-empty)\n      }\n    }\n  ]\n}\n\nRules:\n- Exactly 5 questions, ids Q1..Q5 in order.\n- Exactly 4 options per question, keys A, B, C, D in order.\n- correctAnswer must reference one of the option keys.\n- perOptionExplanation provides a one-or-two-sentence rationale for EACH option (why it is correct, or why it is wrong) \u2014 these are shown to the reader after they tap.\n- Questions should cover distinct facts from the content, not paraphrases of the same point.\n\nReturn only the JSON object. Now generate the Quiz for the content below.\n\n--- BEGIN CONTENT ---\n{{ $json._qgen.material.extracted_content }}\n--- END CONTENT ---"
+            },
+            {
+              "id": "qgen: Examiner prompt-passthrough",
+              "name": "_qgen",
+              "type": "object",
+              "value": "={{ $json._qgen }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2320,
+        440
+      ],
+      "id": "qgen: Examiner prompt",
+      "name": "qgen: Examiner prompt"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "hasOutputParser": false
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        2560,
+        440
+      ],
+      "id": "qgen: Examiner chain",
+      "name": "qgen: Examiner chain"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5-mini"
+        },
+        "options": {
+          "responseFormat": "json_object"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        2560,
+        620
+      ],
+      "id": "qgen: Examiner model",
+      "name": "qgen: Examiner model",
+      "credentials": {
+        "openAiApi": {
+          "id": "D43gBIUjktEiOzQK",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// First Examiner attempt. Same parse contract as lib/examinerOutputParser.js\n// (PRD slice-3 handoff: every inline parser returns { ok, error: { code, message } }).\n// On failure emits _qgen with _examinerFailed=true + raw response so the\n// downstream Switch routes to the retry sub-flow. On success emits _qgen\n// with the parsed questions array.\n\nconst OPTION_KEYS = ['A', 'B', 'C', 'D'];\nconst OPTION_KEY_SET = new Set(OPTION_KEYS);\nconst QUESTION_COUNT = 5;\nfunction isNonEmptyString(v) { return typeof v === 'string' && v.trim().length > 0; }\nfunction validateOptions(options, qIdx) {\n  if (!Array.isArray(options) || options.length !== OPTION_KEYS.length) return `questions[${qIdx}].options must be an array of exactly 4 items`;\n  for (let i = 0; i < OPTION_KEYS.length; i++) {\n    const opt = options[i];\n    const expectedKey = OPTION_KEYS[i];\n    if (!opt || typeof opt !== 'object' || Array.isArray(opt)) return `questions[${qIdx}].options[${i}] must be an object`;\n    if (opt.key !== expectedKey) return `questions[${qIdx}].options[${i}].key must equal \"${expectedKey}\"`;\n    if (!isNonEmptyString(opt.text)) return `questions[${qIdx}].options[${i}].text must be a non-empty string`;\n  }\n  return null;\n}\nfunction validatePerOptionExplanation(explain, qIdx) {\n  if (explain === null || typeof explain !== 'object' || Array.isArray(explain)) return `questions[${qIdx}].perOptionExplanation must be an object`;\n  for (const k of OPTION_KEYS) {\n    if (!isNonEmptyString(explain[k])) return `questions[${qIdx}].perOptionExplanation.${k} must be a non-empty string`;\n  }\n  return null;\n}\nfunction parseExaminer(raw) {\n  let p;\n  try { p = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (_) { return { ok: false, error: { code: 'not_json', message: 'Examiner output is not valid JSON' } }; }\n  if (p === null || typeof p !== 'object' || Array.isArray(p)) return { ok: false, error: { code: 'not_object', message: 'Examiner output is not a JSON object' } };\n  if (!Array.isArray(p.questions) || p.questions.length !== QUESTION_COUNT) return { ok: false, error: { code: 'schema', message: `questions must be an array of exactly ${QUESTION_COUNT} items` } };\n  const out = [];\n  for (let i = 0; i < QUESTION_COUNT; i++) {\n    const q = p.questions[i];\n    if (!q || typeof q !== 'object' || Array.isArray(q)) return { ok: false, error: { code: 'schema', message: `questions[${i}] must be an object` } };\n    if (!isNonEmptyString(q.question)) return { ok: false, error: { code: 'schema', message: `questions[${i}].question must be a non-empty string` } };\n    const optErr = validateOptions(q.options, i);\n    if (optErr) return { ok: false, error: { code: 'schema', message: optErr } };\n    if (!OPTION_KEY_SET.has(q.correctAnswer)) return { ok: false, error: { code: 'schema', message: `questions[${i}].correctAnswer must be one of A|B|C|D` } };\n    const expErr = validatePerOptionExplanation(q.perOptionExplanation, i);\n    if (expErr) return { ok: false, error: { code: 'schema', message: expErr } };\n    out.push({\n      id: `Q${i + 1}`,\n      question: q.question.trim(),\n      options: q.options.map((opt) => ({ key: opt.key, text: opt.text.trim() })),\n      correctAnswer: q.correctAnswer,\n      perOptionExplanation: {\n        A: q.perOptionExplanation.A.trim(),\n        B: q.perOptionExplanation.B.trim(),\n        C: q.perOptionExplanation.C.trim(),\n        D: q.perOptionExplanation.D.trim(),\n      },\n    });\n  }\n  return { ok: true, value: { questions: out } };\n}\n\nconst qgenCtx = $('qgen: classify material').first().json._qgen;\nconst chainItem = $input.first().json;\nconst rawText = (typeof chainItem.text === 'string' ? chainItem.text : (typeof chainItem.output === 'string' ? chainItem.output : JSON.stringify(chainItem)));\nconst result = parseExaminer(rawText);\nif (!result.ok) {\n  return [{ json: { _qgen: { ...qgenCtx, _examinerFailed: true, _examinerError: result.error, _examinerRawFirst: rawText } } }];\n}\nreturn [{ json: { _qgen: { ...qgenCtx, questions: result.value.questions } } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        440
+      ],
+      "id": "qgen: Examiner parse",
+      "name": "qgen: Examiner parse"
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "examiner-ok",
+                    "leftValue": "={{ !$json._qgen._examinerFailed }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ok"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "retry"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        3040,
+        440
+      ],
+      "id": "qgen: Examiner ok?",
+      "name": "qgen: Examiner ok?"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "qgen: Examiner retry prompt-prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "=The previous response did not match the required JSON schema. You MUST return ONLY a single valid JSON object \u2014 no prose, no explanations, no code fences, no extra fields.\n\nSchema (exact):\n{\n  \"questions\": [\n    {\n      \"id\": \"Q1\" | \"Q2\" | \"Q3\" | \"Q4\" | \"Q5\",\n      \"question\": string (non-empty),\n      \"options\": [\n        { \"key\": \"A\", \"text\": string (non-empty) },\n        { \"key\": \"B\", \"text\": string (non-empty) },\n        { \"key\": \"C\", \"text\": string (non-empty) },\n        { \"key\": \"D\", \"text\": string (non-empty) }\n      ],\n      \"correctAnswer\": \"A\" | \"B\" | \"C\" | \"D\",\n      \"perOptionExplanation\": {\n        \"A\": string (non-empty),\n        \"B\": string (non-empty),\n        \"C\": string (non-empty),\n        \"D\": string (non-empty)\n      }\n    }\n  ]\n}\n\nThe questions array must contain EXACTLY 5 items. Return only that JSON object. Now regenerate the Quiz for the content below.\n\n--- BEGIN CONTENT ---\n{{ $json._qgen.material.extracted_content }}\n--- END CONTENT ---"
+            },
+            {
+              "id": "qgen: Examiner retry prompt-passthrough",
+              "name": "_qgen",
+              "type": "object",
+              "value": "={{ $json._qgen }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3040,
+        700
+      ],
+      "id": "qgen: Examiner retry prompt",
+      "name": "qgen: Examiner retry prompt"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "hasOutputParser": false
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        3280,
+        700
+      ],
+      "id": "qgen: Examiner retry chain",
+      "name": "qgen: Examiner retry chain"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5-mini"
+        },
+        "options": {
+          "responseFormat": "json_object"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        3280,
+        880
+      ],
+      "id": "qgen: Examiner retry model",
+      "name": "qgen: Examiner retry model",
+      "credentials": {
+        "openAiApi": {
+          "id": "D43gBIUjktEiOzQK",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Second Examiner attempt. A final failure here surfaces a user-visible\n// error (PRD #9) instead of triggering another retry. Carries both raw\n// responses + structured errors in _qgen for post-mortem visibility.\n\nconst OPTION_KEYS = ['A', 'B', 'C', 'D'];\nconst OPTION_KEY_SET = new Set(OPTION_KEYS);\nconst QUESTION_COUNT = 5;\nfunction isNonEmptyString(v) { return typeof v === 'string' && v.trim().length > 0; }\nfunction validateOptions(options, qIdx) {\n  if (!Array.isArray(options) || options.length !== OPTION_KEYS.length) return `questions[${qIdx}].options must be an array of exactly 4 items`;\n  for (let i = 0; i < OPTION_KEYS.length; i++) {\n    const opt = options[i];\n    const expectedKey = OPTION_KEYS[i];\n    if (!opt || typeof opt !== 'object' || Array.isArray(opt)) return `questions[${qIdx}].options[${i}] must be an object`;\n    if (opt.key !== expectedKey) return `questions[${qIdx}].options[${i}].key must equal \"${expectedKey}\"`;\n    if (!isNonEmptyString(opt.text)) return `questions[${qIdx}].options[${i}].text must be a non-empty string`;\n  }\n  return null;\n}\nfunction validatePerOptionExplanation(explain, qIdx) {\n  if (explain === null || typeof explain !== 'object' || Array.isArray(explain)) return `questions[${qIdx}].perOptionExplanation must be an object`;\n  for (const k of OPTION_KEYS) {\n    if (!isNonEmptyString(explain[k])) return `questions[${qIdx}].perOptionExplanation.${k} must be a non-empty string`;\n  }\n  return null;\n}\nfunction parseExaminer(raw) {\n  let p;\n  try { p = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (_) { return { ok: false, error: { code: 'not_json', message: 'Examiner output is not valid JSON' } }; }\n  if (p === null || typeof p !== 'object' || Array.isArray(p)) return { ok: false, error: { code: 'not_object', message: 'Examiner output is not a JSON object' } };\n  if (!Array.isArray(p.questions) || p.questions.length !== QUESTION_COUNT) return { ok: false, error: { code: 'schema', message: `questions must be an array of exactly ${QUESTION_COUNT} items` } };\n  const out = [];\n  for (let i = 0; i < QUESTION_COUNT; i++) {\n    const q = p.questions[i];\n    if (!q || typeof q !== 'object' || Array.isArray(q)) return { ok: false, error: { code: 'schema', message: `questions[${i}] must be an object` } };\n    if (!isNonEmptyString(q.question)) return { ok: false, error: { code: 'schema', message: `questions[${i}].question must be a non-empty string` } };\n    const optErr = validateOptions(q.options, i);\n    if (optErr) return { ok: false, error: { code: 'schema', message: optErr } };\n    if (!OPTION_KEY_SET.has(q.correctAnswer)) return { ok: false, error: { code: 'schema', message: `questions[${i}].correctAnswer must be one of A|B|C|D` } };\n    const expErr = validatePerOptionExplanation(q.perOptionExplanation, i);\n    if (expErr) return { ok: false, error: { code: 'schema', message: expErr } };\n    out.push({\n      id: `Q${i + 1}`,\n      question: q.question.trim(),\n      options: q.options.map((opt) => ({ key: opt.key, text: opt.text.trim() })),\n      correctAnswer: q.correctAnswer,\n      perOptionExplanation: {\n        A: q.perOptionExplanation.A.trim(),\n        B: q.perOptionExplanation.B.trim(),\n        C: q.perOptionExplanation.C.trim(),\n        D: q.perOptionExplanation.D.trim(),\n      },\n    });\n  }\n  return { ok: true, value: { questions: out } };\n}\n\nconst qgenCtx = $('qgen: classify material').first().json._qgen;\nconst firstFail = $('qgen: Examiner parse').first().json._qgen || {};\nconst chainItem = $input.first().json;\nconst rawText = (typeof chainItem.text === 'string' ? chainItem.text : (typeof chainItem.output === 'string' ? chainItem.output : JSON.stringify(chainItem)));\nconst result = parseExaminer(rawText);\nif (!result.ok) {\n  return [{\n    json: {\n      _qgen: {\n        ...qgenCtx,\n        _error: { code: 'examiner_failed' },\n        _examinerErrorFirst: firstFail._examinerError || null,\n        _examinerErrorSecond: result.error,\n        _examinerRawFirst: firstFail._examinerRawFirst || null,\n        _examinerRawSecond: rawText,\n      },\n    },\n  }];\n}\nreturn [{ json: { _qgen: { ...qgenCtx, questions: result.value.questions } } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3520,
+        700
+      ],
+      "id": "qgen: Examiner retry parse",
+      "name": "qgen: Examiner retry parse"
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "examiner-retry-ok",
+                    "leftValue": "={{ !$json._qgen._error }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ok"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "fail"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        3760,
+        700
+      ],
+      "id": "qgen: Examiner retry ok?",
+      "name": "qgen: Examiner retry ok?"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Unified error-message builder for Quiz-generation failures. Today only\n// PRD error row #9 routes here; future Quiz errors (e.g. Examiner provider\n// outage) can extend the switch. Telegram parse_mode is HTML; this message\n// has no dynamic content so escape isn't necessary, but we honour the\n// contract for forward-compat with future dynamic codes.\nconst items = $input.all();\nreturn items.map((item) => {\n  const q = (item.json && item.json._qgen) || {};\n  const err = q._error || { code: 'unknown' };\n  let html;\n  switch (err.code) {\n    case 'examiner_failed':\n      html = 'Sorry, I had trouble generating the quiz. Try /quiz again?';\n      break;\n    default:\n      html = 'Something went wrong while building your quiz. Try /quiz again?';\n  }\n  return { json: { _render: { chatId: q.chatId, html }, _qgen: q } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4000,
+        880
+      ],
+      "id": "qgen: build error",
+      "name": "qgen: build error"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json._render.chatId }}",
+        "text": "={{ $json._render.html }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4240,
+        880
+      ],
+      "id": "qgen: send error",
+      "name": "qgen: send error",
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      },
+      "webhookId": "qgen: send error"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Either the first or the retry Examiner parse produced questions; mirror\n// /learn forward summary's pattern of trying both nodes safely.\nfunction pick(nodeName) {\n  try {\n    const item = $(nodeName).first();\n    if (item && item.json && item.json._qgen && Array.isArray(item.json._qgen.questions)) {\n      return item.json._qgen;\n    }\n  } catch (_) { /* didn't run */ }\n  return null;\n}\nconst ctx = pick('qgen: Examiner retry parse') || pick('qgen: Examiner parse') || {};\nreturn [{ json: { _qgen: ctx } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3280,
+        440
+      ],
+      "id": "qgen: forward questions",
+      "name": "qgen: forward questions"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Mint a deterministic 8-char base36 quiz_id seeded by chat_id, material\n// short_id, and the current ISO timestamp. Per PRD \u00a7 shortIdMinter the seed\n// only needs to be unique within a chat; the timestamp keeps successive\n// attempts on the same Material distinct without coordination.\n// Also serialize questions to JSON since the Data Table column is type 'string'.\nfunction mint(seed) {\n  const s = seed === null || seed === undefined ? '' : String(seed);\n  let h = 5381;\n  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;\n  return h.toString(36).padStart(8, '0').slice(0, 8);\n}\nconst items = $input.all();\nreturn items.map((item) => {\n  const q = (item.json && item.json._qgen) || {};\n  const createdAt = new Date().toISOString();\n  const quizId = mint(`${q.chatId}|${q.materialShortId}|${createdAt}`);\n  return {\n    json: {\n      _qgen: {\n        ...q,\n        quizId,\n        createdAt,\n        questionsJson: JSON.stringify(q.questions || []),\n        emptyAnswersJson: JSON.stringify([]),\n      },\n    },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3520,
+        440
+      ],
+      "id": "qgen: mint quiz_id",
+      "name": "qgen: mint quiz_id"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "jQTIZuy5TSoMTnf7",
+          "cachedResultName": "quizzes"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "chat_id": "={{ $json._qgen.chatId }}",
+            "material_short_id": "={{ $json._qgen.materialShortId }}",
+            "quiz_id": "={{ $json._qgen.quizId }}",
+            "status": "in_progress",
+            "questions": "={{ $json._qgen.questionsJson }}",
+            "current_index": 0,
+            "answers": "={{ $json._qgen.emptyAnswersJson }}",
+            "score": "={{ null }}",
+            "created_at": "={{ $json._qgen.createdAt }}",
+            "completed_at": "={{ null }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "material_short_id",
+              "displayName": "material_short_id",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quiz_id",
+              "displayName": "quiz_id",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "questions",
+              "displayName": "questions",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "current_index",
+              "displayName": "current_index",
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "answers",
+              "displayName": "answers",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "score",
+              "displayName": "score",
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "type": "date",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "completed_at",
+              "displayName": "completed_at",
+              "type": "date",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        3760,
+        440
+      ],
+      "id": "qgen: insert quiz",
+      "name": "qgen: insert quiz"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "jQTIZuy5TSoMTnf7",
+          "cachedResultName": "quizzes"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "chat_id",
+              "condition": "eq",
+              "keyValue": "={{ $('qgen: mint quiz_id').first().json._qgen.chatId }}"
+            },
+            {
+              "keyName": "material_short_id",
+              "condition": "eq",
+              "keyValue": "={{ $('qgen: mint quiz_id').first().json._qgen.materialShortId }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "in_progress"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        4000,
+        440
+      ],
+      "id": "qgen: cas read back",
+      "name": "qgen: cas read back"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// CAS-on-create post-insert verification (PRD \u00a7 Quiz state mutation contract).\n// Re-read all in_progress rows for (chat_id, material_short_id). Expectation:\n// exactly one row, with quiz_id matching the one we just minted. If we see\n// more than one in_progress row, a concurrent execution slipped through \u2014\n// the executing branch must delete its own row and abort.\nfunction readCtx(nodeName) {\n  try {\n    const item = $(nodeName).first();\n    if (item && item.json && item.json._qgen) return item.json._qgen;\n  } catch (_) {}\n  return null;\n}\nconst ctx = readCtx('qgen: mint quiz_id') || {};\nconst rows = $input.all().map((it) => it.json).filter((r) => r && r.quiz_id);\nconst inProgress = rows.filter((r) => r.status === 'in_progress');\nif (inProgress.length > 1) {\n  return [{ json: { _qgen: { ...ctx, _error: { code: 'cas_duplicate' }, observedRows: inProgress.length } } }];\n}\nreturn [{ json: { _qgen: { ...ctx } } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4240,
+        440
+      ],
+      "id": "qgen: cas classify",
+      "name": "qgen: cas classify"
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "cas-no-dup",
+                    "leftValue": "={{ !$json._qgen._error }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ok"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "duplicate"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        4480,
+        440
+      ],
+      "id": "qgen: cas ok?",
+      "name": "qgen: cas ok?"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "jQTIZuy5TSoMTnf7",
+          "cachedResultName": "quizzes"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "quiz_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._qgen.quizId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        4720,
+        600
+      ],
+      "id": "qgen: cas self-delete",
+      "name": "qgen: cas self-delete"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json._qgen.chatId }}",
+        "text": "Couldn\u2019t start your quiz, please try /quiz again.",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4960,
+        600
+      ],
+      "id": "qgen: cas abort msg",
+      "name": "qgen: cas abort msg",
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      },
+      "webhookId": "qgen: cas abort msg"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Render the first question's HTML body + 4-row inline keyboard.\n// Mirrors task-3/lib/quizQuestionRenderer.js. Question / option text routes\n// through htmlEscape (PRD \u00a7 HTML rendering contract); inline-button labels\n// are plain UTF-8 strings (NOT HTML), truncated to 80 chars for readability.\nfunction htmlEscape(v) {\n  if (v === null || v === undefined) return '';\n  const s = typeof v === 'string' ? v : String(v);\n  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\nconst BUTTON_MAX = 80;\nfunction truncate(s) {\n  const str = s == null ? '' : String(s);\n  if (str.length <= BUTTON_MAX) return str;\n  return str.slice(0, BUTTON_MAX - 1) + '\u2026';\n}\nconst items = $input.all();\nreturn items.map((item) => {\n  const q = (item.json && item.json._qgen) || {};\n  const question = (q.questions && q.questions[0]) || null;\n  if (!question) {\n    return { json: { _render: { chatId: q.chatId, html: 'Something went wrong rendering the quiz.', buttons: [{ text: '\u2800', callback_data: 'noop' }, { text: '\u2800', callback_data: 'noop' }, { text: '\u2800', callback_data: 'noop' }, { text: '\u2800', callback_data: 'noop' }] } } };\n  }\n  const header = '<b>Question 1 of 5</b>';\n  const stem = htmlEscape(question.question);\n  const optionLines = question.options.map((o) => `<b>${htmlEscape(o.key)})</b> ${htmlEscape(o.text)}`).join('\\n');\n  const html = `${header}\\n\\n${stem}\\n\\n${optionLines}`;\n  const buttons = question.options.map((o) => ({ text: truncate(`${o.key}) ${o.text}`), callback_data: `qa:${q.quizId}:0:${o.key}` }));\n  return { json: { _render: { chatId: q.chatId, html, buttons }, _qgen: q } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4720,
+        440
+      ],
+      "id": "qgen: render Q1",
+      "name": "qgen: render Q1"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json._render.chatId }}",
+        "text": "={{ $json._render.html }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        },
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._render.buttons[0].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._render.buttons[0].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._render.buttons[1].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._render.buttons[1].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._render.buttons[2].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._render.buttons[2].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._render.buttons[3].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._render.buttons[3].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4960,
+        440
+      ],
+      "id": "qgen: send Q1",
+      "name": "qgen: send Q1",
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      },
+      "webhookId": "qgen: send Q1"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Decode qa:{quizId}:{qIdx}:{choice}. Validate every field strictly per\n// callbackCodec.decode (PRD slice-4 handoff: defensive validation for qa:\n// payloads). An invalid payload routes to a silent toast (no state mutation,\n// matches PRD error rows #14 / #16) \u2014 the User likely tapped a stale or\n// hand-crafted button.\nconst QA_CHOICES = new Set(['A', 'B', 'C', 'D']);\nconst items = $input.all();\nreturn items.map((item) => {\n  const m = item.json || {};\n  const cq = m.callback_query || {};\n  const msg = cq.message || {};\n  const chatId = String((msg.chat && msg.chat.id) || '');\n  const sourceMessageId = msg.message_id != null ? msg.message_id : null;\n  const queryId = String(cq.id || '');\n  const data = String(cq.data || '');\n  const parts = data.split(':');\n  let err = null;\n  let quizId = '';\n  let qIdx = -1;\n  let choice = '';\n  if (parts.length !== 4 || parts[0] !== 'qa') {\n    err = { code: 'malformed' };\n  } else {\n    quizId = parts[1];\n    const rawIdx = parts[2];\n    choice = parts[3];\n    if (!quizId) err = { code: 'invalid_field' };\n    else if (!/^\\d+$/.test(rawIdx)) err = { code: 'invalid_field' };\n    else if (!QA_CHOICES.has(choice)) err = { code: 'invalid_field' };\n    else {\n      qIdx = Number(rawIdx);\n      if (!Number.isInteger(qIdx) || qIdx < 0 || qIdx > 4) err = { code: 'invalid_field' };\n    }\n  }\n  return { json: { _qa: { chatId, sourceMessageId, queryId, quizId, qIdx, choice, _error: err } } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        -100
+      ],
+      "id": "qa: parse callback",
+      "name": "qa: parse callback"
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "qa-parse-ok",
+                    "leftValue": "={{ !$json._qa._error }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ok"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "invalid"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        -100
+      ],
+      "id": "qa: parse ok?",
+      "name": "qa: parse ok?"
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $json._qa.queryId }}",
+        "additionalFields": {
+          "text": "This question has already been answered or the quiz has ended."
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        80
+      ],
+      "id": "qa: silent toast",
+      "name": "qa: silent toast",
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      },
+      "webhookId": "qa: silent toast",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $json._qa.queryId }}",
+        "additionalFields": {
+          "text": ""
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        880,
+        -280
+      ],
+      "id": "qa: ack callback",
+      "name": "qa: ack callback",
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      },
+      "webhookId": "qa: ack callback",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "jQTIZuy5TSoMTnf7",
+          "cachedResultName": "quizzes"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "chat_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._qa.chatId }}"
+            },
+            {
+              "keyName": "quiz_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._qa.quizId }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        -100
+      ],
+      "id": "qa: fetch quiz",
+      "name": "qa: fetch quiz"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Resolve the quiz row from the partition-filtered fetch. If no row matched,\n// the qa: callback references a quiz_id that no longer exists or belongs to\n// a different chat (PRD error #16). Emit _qa with _error so the downstream\n// Switch routes to the stale toast.\nfunction readCtx() {\n  try {\n    const item = $('qa: parse callback').first();\n    if (item && item.json && item.json._qa) return item.json._qa;\n  } catch (_) {}\n  return {};\n}\nconst ctx = readCtx();\nconst rows = $input.all().map((it) => it.json).filter((r) => r && r.quiz_id);\nif (rows.length === 0) {\n  return [{ json: { _qa: { ...ctx, _error: ctx._error || { code: 'quiz_missing' } } } }];\n}\nconst r = rows[0];\nreturn [{ json: { _qa: { ...ctx, quizRow: r } } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        -100
+      ],
+      "id": "qa: classify quiz",
+      "name": "qa: classify quiz"
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "qa-quiz-ok",
+                    "leftValue": "={{ !$json._qa._error }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ok"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "stale"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1600,
+        -100
+      ],
+      "id": "qa: quiz ok?",
+      "name": "qa: quiz ok?"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Compute the CAS-on-update payload. The DataTable update node's WHERE\n// filter (chat_id + quiz_id + current_index = expected + status = 'in_progress')\n// is the storage-side guard; this code path also gates: if the tap's qIdx\n// does not equal the row's current_index, route to stale immediately \u2014\n// the User tapped a button from an old question (PRD \u00a7 Quiz state mutation\n// contract: duplicate-tap detection).\nfunction readCtx() {\n  try {\n    const item = $('qa: classify quiz').first();\n    if (item && item.json && item.json._qa) return item.json._qa;\n  } catch (_) {}\n  return {};\n}\nconst ctx = readCtx();\nconst row = ctx.quizRow || {};\nconst qIdx = ctx.qIdx;\nconst choice = ctx.choice;\nconst currentIndex = Number(row.current_index);\nif (row.status !== 'in_progress' || currentIndex !== qIdx) {\n  return [{ json: { _qa: { ...ctx, _error: { code: 'stale' } } } }];\n}\nlet questions = [];\ntry { questions = JSON.parse(row.questions || '[]'); } catch (_) { questions = []; }\nlet answers = [];\ntry { answers = JSON.parse(row.answers || '[]'); } catch (_) { answers = []; }\nconst question = questions[qIdx];\nif (!question) {\n  return [{ json: { _qa: { ...ctx, _error: { code: 'stale' } } } }];\n}\nconst isCorrect = choice === question.correctAnswer;\nconst newAnswer = { q_id: question.id, picked: choice, is_correct: isCorrect };\nconst newAnswers = [...answers, newAnswer];\nconst newIndex = qIdx + 1;\nconst isCompleted = newIndex === 5;\nconst newStatus = isCompleted ? 'completed' : 'in_progress';\nconst correctCount = newAnswers.filter((a) => a.is_correct).length;\nconst score = isCompleted ? Math.round((correctCount / 5) * 100) : null;\nconst completedAt = isCompleted ? new Date().toISOString() : null;\nreturn [{\n  json: {\n    _qa: {\n      ...ctx,\n      question,\n      questions,\n      answers: newAnswers,\n      expectedIndex: qIdx,\n      newIndex,\n      newStatus,\n      score,\n      completedAt,\n      isCorrect,\n      answersJson: JSON.stringify(newAnswers),\n    },\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        -100
+      ],
+      "id": "qa: compute update",
+      "name": "qa: compute update"
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "qa-compute-ok",
+                    "leftValue": "={{ !$json._qa._error }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ok"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "stale"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2080,
+        -100
+      ],
+      "id": "qa: compute ok?",
+      "name": "qa: compute ok?"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "jQTIZuy5TSoMTnf7",
+          "cachedResultName": "quizzes"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "chat_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._qa.chatId }}"
+            },
+            {
+              "keyName": "quiz_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._qa.quizId }}"
+            },
+            {
+              "keyName": "current_index",
+              "condition": "eq",
+              "keyValue": "={{ $json._qa.expectedIndex }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "in_progress"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "current_index": "={{ $json._qa.newIndex }}",
+            "status": "={{ $json._qa.newStatus }}",
+            "answers": "={{ $json._qa.answersJson }}",
+            "score": "={{ $json._qa.score }}",
+            "completed_at": "={{ $json._qa.completedAt }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "material_short_id",
+              "displayName": "material_short_id",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quiz_id",
+              "displayName": "quiz_id",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "questions",
+              "displayName": "questions",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "current_index",
+              "displayName": "current_index",
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "answers",
+              "displayName": "answers",
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "score",
+              "displayName": "score",
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "type": "date",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "completed_at",
+              "displayName": "completed_at",
+              "type": "date",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2320,
+        -100
+      ],
+      "id": "qa: cas update",
+      "name": "qa: cas update"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Build the editMessageText payload that removes the previous question's\n// inline keyboard in place (PRD \u00a7 UX). We rebuild the original question\n// body and append a small \"Answered\" footer so Telegram has a text-delta to\n// apply (editing to identical text + reply_markup=null returns \"message is\n// not modified\"). The Bot API removes the inline keyboard when reply_markup\n// is omitted from editMessageText \u2014 the Telegram node achieves this by\n// not setting replyMarkup at all.\nfunction htmlEscape(v) {\n  if (v === null || v === undefined) return '';\n  const s = typeof v === 'string' ? v : String(v);\n  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\nfunction readCtx() {\n  try {\n    const item = $('qa: compute update').first();\n    if (item && item.json && item.json._qa) return item.json._qa;\n  } catch (_) {}\n  return {};\n}\nconst ctx = readCtx();\nconst q = ctx.question || {};\nconst qIdx = ctx.qIdx;\nconst picked = ctx.choice;\nconst header = `<b>Question ${qIdx + 1} of 5</b>`;\nconst stem = htmlEscape(q.question || '');\nconst optionLines = (q.options || []).map((o) => `<b>${htmlEscape(o.key)})</b> ${htmlEscape(o.text)}`).join('\\n');\nconst footer = `\\n\\n<i>You answered: <b>${htmlEscape(picked)}</b></i>`;\nconst html = `${header}\\n\\n${stem}\\n\\n${optionLines}${footer}`;\nreturn [{ json: { _editPrev: { chatId: ctx.chatId, messageId: ctx.sourceMessageId, html }, _qa: ctx } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2560,
+        -260
+      ],
+      "id": "qa: build edit prev",
+      "name": "qa: build edit prev"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "editMessageText",
+        "messageType": "message",
+        "chatId": "={{ $json._editPrev.chatId }}",
+        "messageId": "={{ $json._editPrev.messageId }}",
+        "text": "={{ $json._editPrev.html }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2800,
+        -260
+      ],
+      "id": "qa: edit prev keyboard",
+      "name": "qa: edit prev keyboard",
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      },
+      "webhookId": "qa: edit prev keyboard",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Render the per-question feedback message. Mirrors lib/quizFeedbackRenderer.js.\n// On correct: \u2705 banner + the picked option's pre-generated rationale.\n// On wrong: \u274c banner with the correct letter surfaced + the picked option's\n// rationale (NOT a generic correct-answer blurb \u2014 ADR-0001).\nfunction htmlEscape(v) {\n  if (v === null || v === undefined) return '';\n  const s = typeof v === 'string' ? v : String(v);\n  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\nfunction readCtx() {\n  try {\n    const item = $('qa: edit prev keyboard').first();\n    if (item && item.json && item.json._qa) return item.json._qa;\n  } catch (_) {}\n  try {\n    const item = $('qa: compute update').first();\n    if (item && item.json && item.json._qa) return item.json._qa;\n  } catch (_) {}\n  return {};\n}\nconst ctx = readCtx();\nconst q = ctx.question || {};\nconst picked = ctx.choice;\nconst isCorrect = ctx.isCorrect;\nconst headerLine = `<i>Question ${ctx.qIdx + 1} of 5</i>`;\nconst banner = isCorrect\n  ? `\u2705 <b>Correct!</b>`\n  : `\u274c <b>Not quite.</b> The correct answer was <b>${htmlEscape(q.correctAnswer)}</b>.`;\nconst rationale = htmlEscape((q.perOptionExplanation || {})[picked] || '');\nconst html = `${headerLine}\\n${banner}\\n\\n${rationale}`;\nreturn [{ json: { _render: { chatId: ctx.chatId, html }, _qa: ctx } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2560,
+        -100
+      ],
+      "id": "qa: render feedback",
+      "name": "qa: render feedback"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json._render.chatId }}",
+        "text": "={{ $json._render.html }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2800,
+        -100
+      ],
+      "id": "qa: send feedback",
+      "name": "qa: send feedback",
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      },
+      "webhookId": "qa: send feedback"
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "qa-completed",
+                    "leftValue": "={{ $('qa: compute update').first().json._qa.newStatus === 'completed' }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "completed"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "next"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        3040,
+        -100
+      ],
+      "id": "qa: completed?",
+      "name": "qa: completed?"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Render the final results card after Q5's CAS lands. Mirrors\n// lib/quizResultRenderer.js: header with score %, per-question breakdown\n// showing each question's correct answer + the explanation the User saw\n// (or would have seen) for the option they actually picked.\nfunction htmlEscape(v) {\n  if (v === null || v === undefined) return '';\n  const s = typeof v === 'string' ? v : String(v);\n  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\nconst VALID_CHOICES = new Set(['A', 'B', 'C', 'D']);\n// qa: send feedback's output is the Telegram API response (no _qa). qa: cas\n// update (DataTable) also drops _qa. Read the authoritative _qa from\n// qa: compute update \u2014 same pattern as qa: build edit prev.\nfunction readCtx() {\n  try {\n    const it = $('qa: compute update').first();\n    if (it && it.json && it.json._qa) return it.json._qa;\n  } catch (_) {}\n  return {};\n}\nconst items = $input.all();\nreturn items.map(() => {\n  const ctx = readCtx();\n  const questions = ctx.questions || [];\n  const answers = ctx.answers || [];\n  const correctCount = answers.reduce((n, a) => n + (a && a.is_correct ? 1 : 0), 0);\n  const pct = Math.round((correctCount / 5) * 100);\n  const header = `<b>\ud83c\udfc1 Quiz complete \u2014 ${correctCount}/5 (${pct}%)</b>`;\n  const breakdown = questions.map((q, i) => {\n    const a = answers[i] || {};\n    const picked = VALID_CHOICES.has(a.picked) ? a.picked : '?';\n    const isCorrect = !!a.is_correct;\n    const mark = isCorrect ? '\u2705' : '\u274c';\n    const explanation = (q.perOptionExplanation || {})[picked] || '';\n    const qLine = `<b>Q${i + 1}.</b> ${htmlEscape(q.question || '')}`;\n    const vLine = isCorrect\n      ? `${mark} Your answer: <b>${htmlEscape(picked)}</b>`\n      : `${mark} Your answer: <b>${htmlEscape(picked)}</b> \u2014 Correct: <b>${htmlEscape(q.correctAnswer)}</b>`;\n    const eLine = explanation ? `<i>${htmlEscape(explanation)}</i>` : '';\n    return [qLine, vLine, eLine].filter((x) => x.length > 0).join('\\n');\n  }).join('\\n\\n');\n  const html = `${header}\\n\\n${breakdown}`;\n  return { json: { _render: { chatId: ctx.chatId, html }, _qa: ctx } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3280,
+        80
+      ],
+      "id": "qa: render result",
+      "name": "qa: render result"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json._render.chatId }}",
+        "text": "={{ $json._render.html }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3520,
+        80
+      ],
+      "id": "qa: send result",
+      "name": "qa: send result",
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      },
+      "webhookId": "qa: send result"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Render the NEXT question (qIdx+1) and its 4-row inline keyboard. Same\n// shape as qgen: render Q1; only the source of the questions array differs.\nfunction htmlEscape(v) {\n  if (v === null || v === undefined) return '';\n  const s = typeof v === 'string' ? v : String(v);\n  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\nconst BUTTON_MAX = 80;\nfunction truncate(s) {\n  const str = s == null ? '' : String(s);\n  if (str.length <= BUTTON_MAX) return str;\n  return str.slice(0, BUTTON_MAX - 1) + '\u2026';\n}\n// qa: send feedback's output is the Telegram API response (no _qa). qa: cas\n// update (DataTable) also drops _qa. Read the authoritative _qa from\n// qa: compute update \u2014 same pattern as qa: build edit prev.\nfunction readCtx() {\n  try {\n    const it = $('qa: compute update').first();\n    if (it && it.json && it.json._qa) return it.json._qa;\n  } catch (_) {}\n  return {};\n}\nconst items = $input.all();\nreturn items.map(() => {\n  const ctx = readCtx();\n  const nextIdx = ctx.newIndex;\n  const question = (ctx.questions || [])[nextIdx];\n  if (!question) {\n    return { json: { _render: { chatId: ctx.chatId, html: 'Something went wrong rendering the next question.', buttons: [{ text: '\u2800', callback_data: 'noop' }, { text: '\u2800', callback_data: 'noop' }, { text: '\u2800', callback_data: 'noop' }, { text: '\u2800', callback_data: 'noop' }] } } };\n  }\n  const header = `<b>Question ${nextIdx + 1} of 5</b>`;\n  const stem = htmlEscape(question.question);\n  const optionLines = question.options.map((o) => `<b>${htmlEscape(o.key)})</b> ${htmlEscape(o.text)}`).join('\\n');\n  const html = `${header}\\n\\n${stem}\\n\\n${optionLines}`;\n  const buttons = question.options.map((o) => ({ text: truncate(`${o.key}) ${o.text}`), callback_data: `qa:${ctx.quizId}:${nextIdx}:${o.key}` }));\n  return { json: { _render: { chatId: ctx.chatId, html, buttons }, _qa: ctx } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3280,
+        -260
+      ],
+      "id": "qa: render next",
+      "name": "qa: render next"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json._render.chatId }}",
+        "text": "={{ $json._render.html }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        },
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._render.buttons[0].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._render.buttons[0].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._render.buttons[1].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._render.buttons[1].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._render.buttons[2].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._render.buttons[2].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._render.buttons[3].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._render.buttons[3].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3520,
+        -260
+      ],
+      "id": "qa: send next",
+      "name": "qa: send next",
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      },
+      "webhookId": "qa: send next"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "jQTIZuy5TSoMTnf7",
+          "cachedResultName": "quizzes"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "chat_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._qgen.chatId }}"
+            },
+            {
+              "keyName": "material_short_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._qgen.materialShortId }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "in_progress"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1600,
+        240
+      ],
+      "id": "qgen-pre-insert-check",
+      "name": "qgen: pre-insert check",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Pre-insert zero-row guard for CAS-on-create (PRD \u00a7 Quiz state mutation\n// contract). The active-session key is (chat_id, material_short_id,\n// status='in_progress'). If any in-progress row already exists for the\n// User on this Material, route to the resume-or-restart prompt (slice 6).\n// Runs BEFORE Examiner so a resume case never burns an LLM call.\nfunction readCtx() {\n  try {\n    const item = $('qgen: classify material').first();\n    if (item && item.json && item.json._qgen) return item.json._qgen;\n  } catch (_) {}\n  return {};\n}\nconst ctx = readCtx();\nconst rows = $input.all().map((it) => it.json).filter((r) => r && r.quiz_id && r.status === 'in_progress');\nif (rows.length > 0) {\n  const r = rows[0];\n  return [{ json: { _qgen: { ...ctx, _error: { code: 'active_quiz_exists' }, observedRows: rows.length, observedQuizId: r.quiz_id } } }];\n}\nreturn [{ json: { _qgen: ctx } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        240
+      ],
+      "id": "qgen-pre-insert-classify",
+      "name": "qgen: pre-insert classify"
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "pre-insert-no-active",
+                    "leftValue": "={{ !$json._qgen._error }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ok"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "active"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2080,
+        240
+      ],
+      "id": "qgen-pre-insert-ok",
+      "name": "qgen: pre-insert ok?"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "jQTIZuy5TSoMTnf7",
+          "cachedResultName": "quizzes"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "chat_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._qgen.chatId }}"
+            },
+            {
+              "keyName": "material_short_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._qgen.materialShortId }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "in_progress"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        3520,
+        440
+      ],
+      "id": "qgen: pre-mint check",
+      "name": "qgen: pre-mint check",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Pre-mint zero-row guard (Codex slice-6 HIGH-2). Two concurrent\n// /quiz or rs:n executions can both pass the pre-Examiner pre-insert\n// check then spend Examiner latency before insert. This second guard\n// shrinks the race window from ~5s to ~ms by re-reading in_progress\n// rows just before mint+insert. If any active row is observed, route\n// to the resume-or-restart prompt (same target as pre-Examiner active).\nfunction readCtx() {\n  try {\n    const item = $('qgen: forward questions').first();\n    if (item && item.json && item.json._qgen) return item.json._qgen;\n  } catch (_) {}\n  return {};\n}\nconst ctx = readCtx();\nconst rows = $input.all().map((it) => it.json).filter((r) => r && r.quiz_id && r.status === 'in_progress');\nif (rows.length > 0) {\n  const r = rows[0];\n  // Preserve material context so rs: build prompt can render the title\n  // and bind the prompt to the observed quiz_id.\n  return [{ json: { _qgen: { ...ctx, _error: { code: 'active_quiz_exists' }, observedRows: rows.length, observedQuizId: r.quiz_id } } }];\n}\nreturn [{ json: { _qgen: ctx } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3760,
+        440
+      ],
+      "id": "qgen: pre-mint classify",
+      "name": "qgen: pre-mint classify"
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "pre-mint-no-active",
+                    "leftValue": "={{ !$json._qgen._error }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ok"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "active"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        4000,
+        440
+      ],
+      "id": "qgen: pre-mint ok?",
+      "name": "qgen: pre-mint ok?"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Resume-or-restart prompt builder (PRD User Story #23). Triggered when\n// `qgen: pre-insert ok?` (pre-Examiner) or `qgen: pre-mint ok?` (pre-insert)\n// finds an in-progress Quiz row for the picked Material.\n//\n// Callback_data binds materialShortId AND observedQuizId per Codex slice-6\n// HIGH-1: a stale prompt left in chat must not act on a fresh quiz that\n// replaced the original one. The rs: handler will reject taps whose\n// quiz_id no longer matches the current in_progress row.\n//\n// We may be invoked from either the pre-Examiner branch (ctx via\n// `qgen: pre-insert classify`) or the pre-mint branch (ctx via\n// `qgen: pre-mint classify`). Try both sources \u2014 only one will have run.\nfunction readCtx() {\n  const sources = ['qgen: pre-mint classify', 'qgen: pre-insert classify', 'qgen: classify material'];\n  for (const name of sources) {\n    try {\n      const it = $(name).first();\n      if (it && it.json && it.json._qgen) return it.json._qgen;\n    } catch (_) { /* node didn't run */ }\n  }\n  return {};\n}\nfunction htmlEscape(v) {\n  if (v === null || v === undefined) return '';\n  const s = typeof v === 'string' ? v : String(v);\n  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\nconst ctx = readCtx();\nconst mat = ctx.material || {};\nconst matShort = ctx.materialShortId || '';\nconst quizId = ctx.observedQuizId || '';\nconst titleEsc = htmlEscape(mat.title || 'this material');\nconst html = `You already have an in-progress quiz on <b>${titleEsc}</b>.\\n\\nResume where you left off, or start fresh?`;\nconst buttons = [\n  { text: '\u25b6\ufe0f Resume', callback_data: `rs:${matShort}:${quizId}:r` },\n  { text: '\ud83d\udd04 Start fresh', callback_data: `rs:${matShort}:${quizId}:n` },\n];\nreturn [{ json: { _render: { chatId: ctx.chatId, html, buttons }, _qgen: ctx } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        240
+      ],
+      "id": "rs: build prompt",
+      "name": "rs: build prompt"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json._render.chatId }}",
+        "text": "={{ $json._render.html }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        },
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._render.buttons[0].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._render.buttons[0].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._render.buttons[1].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._render.buttons[1].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2560,
+        240
+      ],
+      "id": "rs: send prompt",
+      "name": "rs: send prompt",
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      },
+      "webhookId": "rs: send prompt"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Decode rs:{materialShortId}:{quizId}:{r|n} \u2014 4-segment format (Codex\n// slice-6 HIGH-1 fix). The quizId binds the prompt to the specific\n// in-progress row observed when the prompt was built, so a stale prompt\n// left in chat cannot delete a freshly-started quiz on the same Material.\n// Defensive validation: malformed data routes to silent toast via\n// rs: parse ok? (no state mutation; user likely tapped a stale or\n// hand-crafted button).\nconst RS_ACTIONS = new Set(['r', 'n']);\nconst items = $input.all();\nreturn items.map((item) => {\n  const m = item.json || {};\n  const cq = m.callback_query || {};\n  const msg = cq.message || {};\n  const chatId = String((msg.chat && msg.chat.id) || '');\n  const sourceMessageId = msg.message_id != null ? msg.message_id : null;\n  const queryId = String(cq.id || '');\n  const data = String(cq.data || '');\n  const parts = data.split(':');\n  let err = null;\n  let materialShortId = '';\n  let quizId = '';\n  let action = '';\n  if (parts.length !== 4 || parts[0] !== 'rs') {\n    err = { code: 'malformed' };\n  } else {\n    materialShortId = parts[1];\n    quizId = parts[2];\n    action = parts[3];\n    if (!materialShortId) err = { code: 'invalid_field' };\n    else if (!quizId) err = { code: 'invalid_field' };\n    else if (!RS_ACTIONS.has(action)) err = { code: 'invalid_field' };\n  }\n  return { json: { _rs: { chatId, sourceMessageId, queryId, materialShortId, quizId, action, _error: err } } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        80
+      ],
+      "id": "rs: parse",
+      "name": "rs: parse"
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rs-parse-ok",
+                    "leftValue": "={{ !$json._rs._error }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ok"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "invalid"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        80
+      ],
+      "id": "rs: parse ok?",
+      "name": "rs: parse ok?"
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $json._rs.queryId }}",
+        "additionalFields": {
+          "text": ""
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        -100
+      ],
+      "id": "rs: ack callback",
+      "name": "rs: ack callback",
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      },
+      "webhookId": "rs: ack callback",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "jQTIZuy5TSoMTnf7",
+          "cachedResultName": "quizzes"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "chat_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._rs.chatId }}"
+            },
+            {
+              "keyName": "material_short_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._rs.materialShortId }}"
+            },
+            {
+              "keyName": "quiz_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._rs.quizId }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "in_progress"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        80
+      ],
+      "id": "rs: fetch quiz",
+      "name": "rs: fetch quiz",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Resolve the in-progress quiz row for this (chat_id, material_short_id).\n// If the row is missing (concurrent start-fresh or quiz completed via a\n// stale browser session), route to silent toast \u2014 no state mutation.\n// Otherwise parse the questions JSON once for downstream renderers.\nfunction readCtx() {\n  try {\n    const item = $('rs: parse').first();\n    if (item && item.json && item.json._rs) return item.json._rs;\n  } catch (_) {}\n  return {};\n}\nconst ctx = readCtx();\nconst rows = $input.all().map((it) => it.json).filter((r) => r && r.quiz_id && r.status === 'in_progress');\nif (rows.length === 0) {\n  return [{ json: { _rs: { ...ctx, _error: { code: 'no_in_progress' } } } }];\n}\nconst r = rows[0];\nlet questions = [];\ntry { questions = JSON.parse(r.questions || '[]'); } catch (_) { questions = []; }\nconst currentIndex = Number(r.current_index);\nif (!Array.isArray(questions) || questions.length === 0 || !Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= questions.length) {\n  return [{ json: { _rs: { ...ctx, _error: { code: 'corrupt_row' }, quizId: r.quiz_id } } }];\n}\nreturn [{ json: { _rs: { ...ctx, quizId: r.quiz_id, currentIndex, questions, quizRow: r } } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        80
+      ],
+      "id": "rs: classify row",
+      "name": "rs: classify row"
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rs-row-ok",
+                    "leftValue": "={{ !$json._rs._error }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ok"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "missing"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1600,
+        80
+      ],
+      "id": "rs: row ok?",
+      "name": "rs: row ok?"
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $json._rs.queryId }}",
+        "additionalFields": {
+          "text": "That quiz is no longer in progress."
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1840,
+        260
+      ],
+      "id": "rs: silent toast",
+      "name": "rs: silent toast",
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      },
+      "webhookId": "rs: silent toast",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rs-action-resume",
+                    "leftValue": "={{ $json._rs.action }}",
+                    "rightValue": "r",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "resume"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rs-action-new",
+                    "leftValue": "={{ $json._rs.action }}",
+                    "rightValue": "n",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "new"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "unknown"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1840,
+        80
+      ],
+      "id": "rs: switch action",
+      "name": "rs: switch action"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Render the question at currentIndex with the original quiz_id in the\n// qa: callback payloads. Mirrors qgen: render Q1 / qa: render next so\n// the slice-5 CAS-on-update flow accepts the answer with no special-case.\nfunction htmlEscape(v) {\n  if (v === null || v === undefined) return '';\n  const s = typeof v === 'string' ? v : String(v);\n  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\nconst BUTTON_MAX = 80;\nfunction truncate(s) {\n  const str = s == null ? '' : String(s);\n  if (str.length <= BUTTON_MAX) return str;\n  return str.slice(0, BUTTON_MAX - 1) + '\u2026';\n}\nfunction readCtx() {\n  try {\n    const it = $('rs: classify row').first();\n    if (it && it.json && it.json._rs) return it.json._rs;\n  } catch (_) {}\n  return {};\n}\nconst items = $input.all();\nreturn items.map(() => {\n  const ctx = readCtx();\n  const idx = ctx.currentIndex;\n  const question = (ctx.questions || [])[idx];\n  if (!question) {\n    return { json: { _render: { chatId: ctx.chatId, html: 'Something went wrong rendering your quiz.', buttons: [{ text: '\u2800', callback_data: 'noop' }, { text: '\u2800', callback_data: 'noop' }, { text: '\u2800', callback_data: 'noop' }, { text: '\u2800', callback_data: 'noop' }] }, _rs: ctx } };\n  }\n  const header = `<b>Resuming \u2014 Question ${idx + 1} of 5</b>`;\n  const stem = htmlEscape(question.question);\n  const optionLines = question.options.map((o) => `<b>${htmlEscape(o.key)})</b> ${htmlEscape(o.text)}`).join('\\n');\n  const html = `${header}\\n\\n${stem}\\n\\n${optionLines}`;\n  const buttons = question.options.map((o) => ({ text: truncate(`${o.key}) ${o.text}`), callback_data: `qa:${ctx.quizId}:${idx}:${o.key}` }));\n  return { json: { _render: { chatId: ctx.chatId, html, buttons }, _rs: ctx } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        -80
+      ],
+      "id": "rs: render question",
+      "name": "rs: render question"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json._render.chatId }}",
+        "text": "={{ $json._render.html }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        },
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._render.buttons[0].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._render.buttons[0].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._render.buttons[1].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._render.buttons[1].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._render.buttons[2].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._render.buttons[2].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json._render.buttons[3].text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json._render.buttons[3].callback_data }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2320,
+        -80
+      ],
+      "id": "rs: send question",
+      "name": "rs: send question",
+      "credentials": {
+        "telegramApi": {
+          "id": "hVZapz6aOoNv7ZVL",
+          "name": "Task 3 Telegram Bot"
+        }
+      },
+      "webhookId": "rs: send question"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "jQTIZuy5TSoMTnf7",
+          "cachedResultName": "quizzes"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "quiz_id",
+              "condition": "eq",
+              "keyValue": "={{ $json._rs.quizId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2080,
+        240
+      ],
+      "id": "rs: delete quiz",
+      "name": "rs: delete quiz"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Emit a _qgen context identical in shape to tp: parse / qstart: parse,\n// so the downstream `qgen: fetch material` \u2192 ... \u2192 Examiner chain treats\n// the rs:n start-fresh as a normal quiz generation. The old quiz row was\n// just deleted, so pre-insert check will see 0 in-progress rows and\n// proceed cleanly. qgen: classify material is extended to read from\n// this node as a third source.\nfunction readCtx() {\n  try {\n    const it = $('rs: classify row').first();\n    if (it && it.json && it.json._rs) return it.json._rs;\n  } catch (_) {}\n  return {};\n}\nconst ctx = readCtx();\nreturn [{ json: { _qgen: { chatId: ctx.chatId, sourceMessageId: ctx.sourceMessageId, queryId: ctx.queryId, materialShortId: ctx.materialShortId, source: 'rs:n', ackToast: '\ud83e\udde0 Generating your quiz\u2026' } } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        240
+      ],
+      "id": "rs: prepare qgen",
+      "name": "rs: prepare qgen"
     }
   ],
   "connections": {
     "Telegram Trigger": {
       "main": [
         [
-          { "node": "Classify Update", "type": "main", "index": 0 }
+          {
+            "node": "Classify Update",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "Classify Update": {
       "main": [
         [
-          { "node": "Route by Command", "type": "main", "index": 0 }
+          {
+            "node": "Route by Command",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "Route by Command": {
       "main": [
-        [{ "node": "Send /start help", "type": "main", "index": 0 }],
-        [{ "node": "/learn parse + normalize", "type": "main", "index": 0 }],
-        [{ "node": "/quiz stub (slice 4)", "type": "main", "index": 0 }],
-        [{ "node": "qa: stub (slice 5)", "type": "main", "index": 0 }],
-        [{ "node": "rs: stub (slice 6)", "type": "main", "index": 0 }],
-        [{ "node": "tp: stub (slice 4)", "type": "main", "index": 0 }],
-        [{ "node": "tpp: stub (slice 4)", "type": "main", "index": 0 }],
-        [{ "node": "qstart: stub (slice 5)", "type": "main", "index": 0 }],
-        [{ "node": "Unknown update (no-op)", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Send /start help",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "/learn parse + normalize",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "/quiz fetch materials",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "qa: parse callback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "rs: parse",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "tp: parse",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "tpp: parse",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "qstart: parse",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unknown update (no-op)",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn parse + normalize": {
       "main": [
-        [{ "node": "/learn valid?", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn valid?": {
       "main": [
-        [{ "node": "/learn dedup lookup", "type": "main", "index": 0 }],
-        [{ "node": "/learn build error", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn dedup lookup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "/learn build error",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn dedup lookup": {
       "main": [
-        [{ "node": "/learn classify cache", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn classify cache",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn classify cache": {
       "main": [
-        [{ "node": "/learn cache hit?", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn cache hit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn cache hit?": {
       "main": [
-        [{ "node": "/learn render summary", "type": "main", "index": 0 }],
-        [{ "node": "/learn Jina fetch", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn render summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "/learn Jina fetch",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn Jina fetch": {
       "main": [
-        [{ "node": "/learn extract content", "type": "main", "index": 0 }],
-        [{ "node": "/learn extract content", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn extract content",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "/learn extract content",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn extract content": {
       "main": [
-        [{ "node": "/learn content ok?", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn content ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn content ok?": {
       "main": [
-        [{ "node": "/learn Teacher prompt", "type": "main", "index": 0 }],
-        [{ "node": "/learn build error", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn Teacher prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "/learn build error",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn Teacher prompt": {
       "main": [
-        [{ "node": "/learn Teacher chain", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn Teacher chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn Teacher model": {
       "ai_languageModel": [
-        [{ "node": "/learn Teacher chain", "type": "ai_languageModel", "index": 0 }]
+        [
+          {
+            "node": "/learn Teacher chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn Teacher chain": {
       "main": [
-        [{ "node": "/learn Teacher parse", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn Teacher parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn Teacher parse": {
       "main": [
-        [{ "node": "/learn Teacher ok?", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn Teacher ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn Teacher ok?": {
       "main": [
-        [{ "node": "/learn insert material", "type": "main", "index": 0 }],
-        [{ "node": "/learn Teacher retry prompt", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn insert material",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "/learn Teacher retry prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn Teacher retry prompt": {
       "main": [
-        [{ "node": "/learn Teacher retry chain", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn Teacher retry chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn Teacher retry model": {
       "ai_languageModel": [
-        [{ "node": "/learn Teacher retry chain", "type": "ai_languageModel", "index": 0 }]
+        [
+          {
+            "node": "/learn Teacher retry chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn Teacher retry chain": {
       "main": [
-        [{ "node": "/learn Teacher retry parse", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn Teacher retry parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn Teacher retry parse": {
       "main": [
-        [{ "node": "/learn Teacher retry ok?", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn Teacher retry ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn Teacher retry ok?": {
       "main": [
-        [{ "node": "/learn insert material", "type": "main", "index": 0 }],
-        [{ "node": "/learn build error", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn insert material",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "/learn build error",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn build error": {
       "main": [
-        [{ "node": "/learn send error", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn send error",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn insert material": {
       "main": [
-        [{ "node": "/learn forward summary", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn forward summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn forward summary": {
       "main": [
-        [{ "node": "/learn render summary", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn render summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "/learn render summary": {
       "main": [
-        [{ "node": "/learn send summary", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "/learn send summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "/quiz fetch materials": {
+      "main": [
+        [
+          {
+            "node": "/quiz build picker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "/quiz build picker": {
+      "main": [
+        [
+          {
+            "node": "/quiz empty or picker?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "/quiz empty or picker?": {
+      "main": [
+        [
+          {
+            "node": "/quiz send picker",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "/quiz send empty",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tpp: parse": {
+      "main": [
+        [
+          {
+            "node": "tpp: ack",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "tpp: fetch materials",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tpp: fetch materials": {
+      "main": [
+        [
+          {
+            "node": "tpp: build picker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tpp: build picker": {
+      "main": [
+        [
+          {
+            "node": "tpp: empty or picker?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tpp: empty or picker?": {
+      "main": [
+        [
+          {
+            "node": "tpp: edit picker",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "tpp: edit empty",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tp: parse": {
+      "main": [
+        [
+          {
+            "node": "qgen: fetch material",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qstart: parse": {
+      "main": [
+        [
+          {
+            "node": "qgen: fetch material",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: fetch material": {
+      "main": [
+        [
+          {
+            "node": "qgen: classify material",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: classify material": {
+      "main": [
+        [
+          {
+            "node": "qgen: ack callback",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "qgen: material ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: material ok?": {
+      "main": [
+        [
+          {
+            "node": "qgen: pre-insert check",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "qgen: send missing material",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: Examiner prompt": {
+      "main": [
+        [
+          {
+            "node": "qgen: Examiner chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: Examiner model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "qgen: Examiner chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: Examiner chain": {
+      "main": [
+        [
+          {
+            "node": "qgen: Examiner parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: Examiner parse": {
+      "main": [
+        [
+          {
+            "node": "qgen: Examiner ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: Examiner ok?": {
+      "main": [
+        [
+          {
+            "node": "qgen: forward questions",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "qgen: Examiner retry prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: Examiner retry prompt": {
+      "main": [
+        [
+          {
+            "node": "qgen: Examiner retry chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: Examiner retry model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "qgen: Examiner retry chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: Examiner retry chain": {
+      "main": [
+        [
+          {
+            "node": "qgen: Examiner retry parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: Examiner retry parse": {
+      "main": [
+        [
+          {
+            "node": "qgen: Examiner retry ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: Examiner retry ok?": {
+      "main": [
+        [
+          {
+            "node": "qgen: forward questions",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "qgen: build error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: build error": {
+      "main": [
+        [
+          {
+            "node": "qgen: send error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: forward questions": {
+      "main": [
+        [
+          {
+            "node": "qgen: pre-mint check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: mint quiz_id": {
+      "main": [
+        [
+          {
+            "node": "qgen: insert quiz",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: insert quiz": {
+      "main": [
+        [
+          {
+            "node": "qgen: cas read back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: cas read back": {
+      "main": [
+        [
+          {
+            "node": "qgen: cas classify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: cas classify": {
+      "main": [
+        [
+          {
+            "node": "qgen: cas ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: cas ok?": {
+      "main": [
+        [
+          {
+            "node": "qgen: render Q1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "qgen: cas self-delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: cas self-delete": {
+      "main": [
+        [
+          {
+            "node": "qgen: cas abort msg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: render Q1": {
+      "main": [
+        [
+          {
+            "node": "qgen: send Q1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qa: parse callback": {
+      "main": [
+        [
+          {
+            "node": "qa: parse ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qa: parse ok?": {
+      "main": [
+        [
+          {
+            "node": "qa: ack callback",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "qa: fetch quiz",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "qa: silent toast",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qa: fetch quiz": {
+      "main": [
+        [
+          {
+            "node": "qa: classify quiz",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qa: classify quiz": {
+      "main": [
+        [
+          {
+            "node": "qa: quiz ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qa: quiz ok?": {
+      "main": [
+        [
+          {
+            "node": "qa: compute update",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "qa: silent toast",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qa: compute update": {
+      "main": [
+        [
+          {
+            "node": "qa: compute ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qa: compute ok?": {
+      "main": [
+        [
+          {
+            "node": "qa: cas update",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "qa: silent toast",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qa: cas update": {
+      "main": [
+        [
+          {
+            "node": "qa: build edit prev",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "qa: render feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qa: build edit prev": {
+      "main": [
+        [
+          {
+            "node": "qa: edit prev keyboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qa: render feedback": {
+      "main": [
+        [
+          {
+            "node": "qa: send feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qa: send feedback": {
+      "main": [
+        [
+          {
+            "node": "qa: completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qa: completed?": {
+      "main": [
+        [
+          {
+            "node": "qa: render result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "qa: render next",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qa: render result": {
+      "main": [
+        [
+          {
+            "node": "qa: send result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qa: render next": {
+      "main": [
+        [
+          {
+            "node": "qa: send next",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: pre-insert check": {
+      "main": [
+        [
+          {
+            "node": "qgen: pre-insert classify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: pre-insert classify": {
+      "main": [
+        [
+          {
+            "node": "qgen: pre-insert ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: pre-insert ok?": {
+      "main": [
+        [
+          {
+            "node": "qgen: Examiner prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "rs: build prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: pre-mint check": {
+      "main": [
+        [
+          {
+            "node": "qgen: pre-mint classify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: pre-mint classify": {
+      "main": [
+        [
+          {
+            "node": "qgen: pre-mint ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qgen: pre-mint ok?": {
+      "main": [
+        [
+          {
+            "node": "qgen: mint quiz_id",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "rs: build prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "rs: build prompt": {
+      "main": [
+        [
+          {
+            "node": "rs: send prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "rs: parse": {
+      "main": [
+        [
+          {
+            "node": "rs: parse ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "rs: parse ok?": {
+      "main": [
+        [
+          {
+            "node": "rs: ack callback",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "rs: fetch quiz",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "rs: fetch quiz": {
+      "main": [
+        [
+          {
+            "node": "rs: classify row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "rs: classify row": {
+      "main": [
+        [
+          {
+            "node": "rs: row ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "rs: row ok?": {
+      "main": [
+        [
+          {
+            "node": "rs: switch action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "rs: silent toast",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "rs: switch action": {
+      "main": [
+        [
+          {
+            "node": "rs: render question",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "rs: delete quiz",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "rs: render question": {
+      "main": [
+        [
+          {
+            "node": "rs: send question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "rs: delete quiz": {
+      "main": [
+        [
+          {
+            "node": "rs: prepare qgen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "rs: prepare qgen": {
+      "main": [
+        [
+          {
+            "node": "qgen: fetch material",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
