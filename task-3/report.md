@@ -1,33 +1,42 @@
 # Task 3 — "Workflowing with n8n" Submission Report
 
+Live bot: [`t.me/AltmerLearningBot`](https://t.me/AltmerLearningBot)
+
 ## Tools and techniques
 
-- **n8n Cloud** (Starter Annual) hosting the workflow and persisting state in n8n **Data Tables**.
-- **Telegram Bot API** via the n8n Telegram Trigger + sendMessage / answerCallbackQuery nodes. Bot registered through BotFather; handle and token kept in `.env` (`TG_BOT_USERNAME`, `TG_BOT_TOKEN`), never in the workflow JSON.
-- **Jina Reader** (`r.jina.ai`) as the URL → clean Markdown extractor, called from the standard HTTP Request node.
-- **OpenAI** via the n8n built-in LLM credential (`gpt-5-mini`, JSON response mode) for both the Teacher (summary + difficulty) and Examiner (5-question MCQ + per-option explanations) roles. Personal `OPENAI_API_KEY` / `GEMINI_API_KEY` staged as fallbacks.
-- **Agent skills** used during design: `/grill-with-docs` to interview through the design tree, `/to-prd` to synthesise the PRD, `/codex:adversarial-review` to challenge the design.
-- **MCPs**: n8n MCP for node-schema introspection, Ref MCP for live docs lookups, Claude Code computer-use 
+- **AI Agents and Tools**: The implementation fully via the `Claude Code CLI` (Opus 4.7 xhigh) with the `Codex CLI` (gpt-5-5 xhigh) as a reviewer and planner.
+- **n8n Cloud** hosts the workflow and persists state in **Data Tables** — no external DB.
+- **Telegram Bot API** through n8n's native Telegram Trigger and `sendMessage` / `editMessageText` / `answerCallbackQuery` operations. Bot registered via BotFather; handle and token live in `.env`, never in the workflow JSON.
+- **Jina Reader** (`r.jina.ai`) as the URL → clean Markdown extractor (HTTP Request node).
+- **OpenAI** `gpt-5-mini` free tier via the n8n `lmChatOpenAi` sub-node with `responseFormat: "json_object"`, used for both Teacher and Examiner AI roles.
+- **Vitest** for 139 pure-JS unit tests on parsers, renderers, callback codec, URL normaliser, and `htmlEscape`.
+- **Agent skills** from the [`mattpocock/skills`](https://github.com/mattpocock/skills) collection: `/grill-with-docs` for a design decisions interview; `/to-prd` to crystallise it; `/to-issues` to break it into tracer-bullet slices; `/codex:adversarial-review` from Codex plugin to challenge the design.
+- **MCPs**: 
+  - `n8n MCP` for node-schema introspection, deployment, and execution inspection; 
+  - `Ref MCP` for official live docs fetching; 
+  - `Claude Code computer-use` for the agent-driven end-to-end demo against Telegram desktop.
 
 ## What worked
 
-- A clean grilling pass (14 design branches) before touching n8n caught a real ambiguity in the brief — *"intelligent validation"* with A/B/C/D buttons — and resolved it deliberately rather than hand-waving during build.
+- Grilling the design before touching n8n caught a lot of real important decisions — and resolved it deliberately into pre-generated per-option explanations.
 - Jina Reader removed an entire class of problems (HTML chrome stripping, SPA rendering, per-site selectors) with one URL substitution.
-- A single workflow + Switch router keeps the export to one file the grader can import in one click, and costs exactly one execution per Telegram update.
-- Encoding full state into `callback_data` (`qa:{quizId}:{qIdx}:{choice}`) made stale-tap protection a one-line check.
-- Running an adversarial review pass before writing code surfaced two contracts (quiz state mutation, HTML escaping) that would have been painful bugs.
+- A single workflow + Switch router on a `_route` token keeps the export to one file and costs exactly one execution per Telegram update — well within the Starter plan's monthly budget.
+- Encoding full state into `callback_data` made stale-tap protection a single-line CAS-on-update check.
+- Adversarial review passes surfaced two HIGH-severity issues — the Quiz state mutation contract, and an `rs:` callback that could destructively act on a stale prompt — that would have been painful production bugs.
 
 ## What didn't
 
-- The brief's claim that *"n8n includes free GPT tokens out of the box"* didn't match what current n8n docs describe — every official AI-node page assumes BYO-API-key. Mitigation: keep both the bundled credential and a personal key wired up, swap if the free path stalls.
-- GitHub `/to-prd` publish step was intentionally skipped; the PRD lives at `task-3/PRD.md` instead of as an issue.
+- Two PRD UX details diverged from the platform reality: the picker shipped as a numbered 2×4 grid (instead of one button per row) because the n8n Telegram node v1.2 cannot accept dynamic-length inline keyboards; keyboard removal between questions uses `editMessageText` (instead of `editMessageReplyMarkup`) because direct HTTP calls can't read `$credentials.accessToken` from expressions.
+- The exported `workflow.json` is the byte-level deployed snapshot — it does **not** import one-click into a fresh n8n instance. The grader has to create the Telegram credential, OpenAI credential, and the two Data Tables, then re-select them on the affected nodes. README documents the four steps.
 
 ## Notable decisions
 
 - **Multi-user, partitioned by Telegram `chat_id`.** Lets graders try the bot in isolation; cost is one extra column per row.
-- **n8n Data Tables over external Postgres/Supabase.** Zero credentials, fully MCP-manageable; JSON fields serialized as strings. See ADR-0002.
-- **"Intelligent validation" relocated from match-time to generation-time.** Examiner pre-generates a targeted explanation for every option of every question; runtime is a deterministic lookup. See ADR-0001.
-- **Quiz lifecycle**: regenerate fresh on every attempt, but if an `in_progress` Quiz exists, prompt resume-or-restart. Backed by a CAS-on-create / CAS-on-update contract since Data Tables don't enforce uniqueness natively.
-- **HTML parse mode (not MarkdownV2)** for all bot replies, with a mandatory `htmlEscape` of every dynamic field — avoids both MarkdownV2's escape rules and the `List<T>` / `a < b` rendering pitfalls.
+- **n8n Data Tables over external Postgres / Supabase.** Zero credentials, fully MCP-manageable, schema mirrors PRD §Storage exactly. JSON-shaped fields are serialised as strings. ADR-0002.
+- **Intelligent validation relocated from match-time to generation-time.** The Examiner pre-generates a targeted explanation for every option of every question; runtime answer handling is a deterministic lookup. ADR-0001.
+- **Quiz lifecycle**: regenerate fresh on every attempt, but if an `in_progress` Quiz exists, prompt resume-or-restart. Backed by a CAS-on-create / CAS-on-update contract (Data Tables don't enforce unique indexes natively).
+- **Three-layer race defense for quiz creation** — pre-Examiner check (saves an LLM call when a resume-prompt will fire), pre-insert check (shrinks the inter-execution race window from seconds to milliseconds), and post-insert CAS read-back (slice-5 race floor).
+- **HTML parse mode throughout, with mandatory `htmlEscape` on every dynamic field.** Avoids MarkdownV2's escape rules and the `List<T>` / `a < b` rendering pitfalls. Static markup (`<b>`, `<i>`) is interpolated raw.
+- **Post-quiz "What's next?" menu.** PRD's terminal state was the results card alone; we added a static menu node beneath it so the user has next-step hints (`/learn` / `/quiz` / `/start`) instead of being left hanging.
 
-Domain glossary lives in `task-3/CONTEXT.md`; full design rationale in `task-3/PRD.md` and `task-3/docs/adr/`.
+Domain glossary lives in [`CONTEXT.md`](./CONTEXT.md); full design rationale in [`PRD.md`](./PRD.md) and [`docs/adr/`](./docs/adr/); usage walkthrough in [`README.md`](./README.md).

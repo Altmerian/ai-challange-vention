@@ -32,6 +32,3 @@ auth.json
 .DS_Store
 *.tmp
 *.bak
-
-# Implementation plan - contains sensitive info and is not meant for version control
-/task-3/implementation-plan.md
