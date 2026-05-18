@@ -4,3 +4,4 @@ The task is to build a Model Context Protocol server that works as an AI-ready A
 
 - [Task Description](./task-4-description.md)
 - [Submission Report](./report.md)
+- [Domain Glossary](./CONTEXT.md)
