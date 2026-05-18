@@ -9,8 +9,8 @@ This is a **multi-context** workspace: each top-level task folder is its own con
 | Context  | Path      | Status   |
 | -------- | --------- | -------- |
 | Task 1   | `task-1/` | **Complete — do not modify or extend domain docs here.** |
-| Task 2   | `task-2/` | Active   |
-| Task 3   | `task-3/` | Active   |
+| Task 2   | `task-2/` | **Complete — do not modify or extend domain docs here.** |
+| Task 3   | `task-3/` | **Complete — do not modify or extend domain docs here.** |
 | Task 4   | `task-4/` | Active   |
 
 When working in `task-N/`, treat that folder as the current context.
@@ -36,12 +36,8 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 ├── CONTEXT-MAP.md                ← lazy; created when ≥2 contexts have CONTEXT.md
 ├── docs/adr/                     ← system-wide decisions (lazy)
 ├── task-1/                       ← COMPLETE — do not extend
-├── task-2/
-│   ├── CONTEXT.md                ← lazy
-│   └── docs/adr/                 ← lazy
-├── task-3/
-│   ├── CONTEXT.md                ← lazy
-│   └── docs/adr/                 ← lazy
+├── task-2/                       ← COMPLETE — do not extend
+├── task-3/                       ← COMPLETE — do not extend
 └── task-4/
     ├── CONTEXT.md                ← lazy
     └── docs/adr/                 ← lazy
