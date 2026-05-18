@@ -13,7 +13,7 @@ Repo: [Altmerian/ai-challenge-vention](https://github.com/Altmerian/ai-challenge
 | 3 | `generate_schedule` MVP + `atc://runways` + `atc://timeline` + `TimezoneFormatter` + Morning Rush | AFK | #10 | [#11](https://github.com/Altmerian/ai-challenge-vention/issues/11) | - [ ] |
 | 4 | Dependencies in `Scheduler` + Connecting Flight | AFK | #11 | [#12](https://github.com/Altmerian/ai-challenge-vention/issues/12) | - [ ] |
 | 5 | `cancel_flight` with auto-regen cascade | AFK | #12 | [#13](https://github.com/Altmerian/ai-challenge-vention/issues/13) | - [ ] |
-| 6 | `get_airport_status` + Heavy Hauler | AFK | #11 | [#14](https://github.com/Altmerian/ai-challenge-vention/issues/14) | - [ ] |
+| 6 | `get_airport_status` + Heavy Hauler | AFK | #11, #12 | [#14](https://github.com/Altmerian/ai-challenge-vention/issues/14) | - [ ] |
 | 7 | `analyze_bottleneck` (CPM critical path) | AFK | #12 | [#15](https://github.com/Altmerian/ai-challenge-vention/issues/15) | - [ ] |
 | 8 | Determinism + extra scenarios + Inspector verification | AFK | #13, #14, #15 | [#16](https://github.com/Altmerian/ai-challenge-vention/issues/16) | - [ ] |
 | 9 | `README.md` + `report.md` | AFK | #16 | [#17](https://github.com/Altmerian/ai-challenge-vention/issues/17) | - [ ] |
@@ -21,14 +21,14 @@ Repo: [Altmerian/ai-challenge-vention](https://github.com/Altmerian/ai-challenge
 ## Dependency graph
 
 ```
-#9 ──► #10 ──► #11 ──┬─► #12 ──┬─► #13 ───┐
-                     │         │          │
-                     │         └─► #15 ───┼─► #16 ──► #17
-                     │                    │
-                     └─────► #14 ─────────┘
+#9 ──► #10 ──► #11 ──► #12 ──┬─► #13 ───┐
+                             │          │
+                             ├─► #14 ───┼─► #16 ──► #17
+                             │          │
+                             └─► #15 ───┘
 ```
 
-After `#11` lands, `#14` (status + Heavy Hauler) and the dependency branch (`#12` → `#13` and `#12` → `#15`) can progress in parallel. `#16` is the convergence point — all three (`#13`, `#14`, `#15`) must be done before determinism and the Inspector driver can finish the full verification.
+After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get_airport_status`), `#15` (`analyze_bottleneck`) — can progress in parallel. `#16` is the convergence point: all three must be done before determinism and the Inspector driver can finish the full verification. `#14` blocks on `#12` (not just `#11`) because the `constraints.dependency_blocking` flag requires the `dependency_*` reason taxonomy that `#12` introduces.
 
 ## Per-slice checklist
 
@@ -62,10 +62,11 @@ After `#11` lands, `#14` (status + Heavy Hauler) and the dependency branch (`#12
 - [ ] Separation buffers (takeoff / landing / mixed) + `Gate Turnaround` + `ATC_MAX_HORIZON_MIN` respected
 - [ ] Contested ordering = (priority desc, submission_index asc); no displacement, no inheritance
 - [ ] Unscheduled reasons exercised: `no_compatible_runway`, `horizon_exceeded`
-- [ ] `Completion Time` = gate release (arrivals) / runway release (departures)
+- [ ] `Completion Time` = gate release (arrivals) / runway release (departures); matches `end_offset_min` on each entry
 - [ ] `TimezoneFormatter` validates IANA tz; invalid → error envelope, **not** silent UTC fallback
-- [ ] `ScheduleEntry` carries both integer-minute offsets and ISO-8601 with offset (timezone-aware)
-- [ ] `atc://runways` exposes `busy_minutes` **including trailing separation buffer**
+- [ ] `ScheduleEntry` carries integer-minute offsets, ISO-8601 in client tz, **and** explicit `runway_window` + `gate_window` per the PRD derivation rules (arrivals use runway then gate; departures use gate then runway)
+- [ ] `schedule_start_at` is **UTC** (per ADR-0002) — per-entry `start_at` / `end_at` are the client-tz render
+- [ ] `atc://runways` exposes `busy_minutes` **including trailing separation buffer**, plus `available_windows` and `next_available_at_offset_min` so clients can see availability, not only usage
 - [ ] `atc://timeline` flat chronological, sorted by `(start_offset_min, flight_number)`
 - [ ] Runway IDs auto-assigned `RWY-1…`; gate IDs auto-assigned `GATE-1…` by env-var position
 - [ ] Unit tests for `Scheduler`: single arrival, contested priority, no-compat runway, horizon exceeded, gate turnaround, separation buffer (each variant)
@@ -92,9 +93,9 @@ After `#11` lands, `#14` (status + Heavy Hauler) and the dependency branch (`#12
 - [ ] Cancelling unknown `flight_number` returns an `isError` envelope
 - [ ] `AirportState.cancelFlight` invokes `Scheduler` and replaces the schedule **before** returning
 - [ ] Direct + transitive dependents come back `unscheduled` with reason `dependency_cancelled` + `blocking_flight_number`
-- [ ] Unrelated scheduled flights keep byte-identical offsets across the cancel (assert via test)
+- [ ] **Narrow stability invariant:** cancelling a flight that has no dependents *and* whose runway/gate slot is uncontested (no waiting flight in the queue could claim it) leaves all other offsets byte-identical. Asserted via a deliberately uncontested fixture; the wider claim ("any cancel leaves unrelated flights stable") is **not** an invariant of greedy scheduling and is not tested.
 - [ ] Re-submitting a cancelled `flight_number` is still rejected
-- [ ] Unit tests: cancel `submitted`, cancel scheduled leaf, single-dependent cascade, transitive cascade, idempotency, unknown error, independence
+- [ ] Unit tests: cancel `submitted`, cancel scheduled leaf (uncontested → stability holds), single-dependent cascade, transitive cascade, idempotency, unknown error, narrow stability fixture
 - [ ] Integration test: full submit → schedule → cancel cascade in one round-trip
 - [ ] Inspector CLI verification: "cancel A re-evaluates B to `dependency_cancelled` without explicit `generate_schedule`"
 
@@ -108,7 +109,8 @@ After `#11` lands, `#14` (status + Heavy Hauler) and the dependency branch (`#12
 - [ ] `constraints.dependency_blocking` ⇔ any has a `dependency_*` reason
 - [ ] `constraints.any_blocked` = OR of the three
 - [ ] `blocked_flights` mirrors current schedule's `unscheduled` entries
-- [ ] `schedule_completion` = `null` before first schedule; otherwise `{ schedule_start_at, makespan_min, completion_at }`
+- [ ] `schedule_completion` is `null` iff `generate_schedule` has never run in this process. An all-unscheduled pass returns `{ schedule_start_at, makespan_min: 0, completion_at: schedule_start_at }` — **not** `null`.
+- [ ] `schedule_start_at` / `completion_at` are UTC ISO-8601 instants (per ADR-0002); client-tz rendering happens via `start_at` / `end_at` on `ScheduleEntry`, not here
 - [ ] Status read does not recompute (assert offsets byte-identical across repeated calls)
 - [ ] Unit tests: empty queue, post-submission pre-schedule, mixed scheduled/unscheduled, `busy_minutes` math, each `constraints` boolean flip
 - [ ] **Heavy Hauler** brief scenario passes via `InMemoryTransport` and Inspector CLI walkthrough
@@ -121,11 +123,11 @@ After `#11` lands, `#14` (status + Heavy Hauler) and the dependency branch (`#12
 - [ ] Cancelled / unscheduled flights excluded from the DAG
 - [ ] Tiebreakers in order: elapsed → node count → earliest first-flight start → lex `flight_number` sequence
 - [ ] `chain` ordered first → last; matches `ScheduleEntry` shape
-- [ ] `cumulative_operation_min` = sum of per-node durations; `cumulative_buffer_min = total_elapsed − cumulative_operation`
+- [ ] `cumulative_operation_min` = sum of per-node durations; `cumulative_wait_min = total_elapsed − cumulative_operation` (folds in dependency-buffer **and** resource-contention gaps — see PRD note)
 - [ ] `start_at` / `end_at` rendered via `TimezoneFormatter` when chain exists; omitted otherwise
 - [ ] Deterministic: re-run on same schedule yields byte-identical report
-- [ ] Unit tests: empty queue, no scheduled deps, 2-chain, 3-chain, tiebreak by node count + start + lex, buffer-dominated chain (`cumulative_buffer_min > 0`), subtree with unscheduled predecessor excluded
-- [ ] Integration test: A→B with large gate turnaround → `bottleneck_exists: true`, `chain_length: 2`, buffer math matches
+- [ ] Unit tests: empty queue, no scheduled deps, 2-chain, 3-chain, tiebreak by node count + start + lex, wait-dominated chain (`cumulative_wait_min > 0`), subtree with unscheduled predecessor excluded
+- [ ] Integration test: A→B with large gate turnaround → `bottleneck_exists: true`, `chain_length: 2`, wait math matches
 - [ ] Inspector CLI verification of the bottleneck assertion
 
 ### Slice 8 — Determinism + extra scenarios + Inspector verification · [#16](https://github.com/Altmerian/ai-challenge-vention/issues/16)

@@ -27,7 +27,7 @@ A capacity-1 resource with a single configured attribute, `length_m`, that holds
 A capacity-1 resource (uniform — no attributes, no per-flight gate requirements) that holds one **Flight** for the **Gate Turnaround** window.
 
 **Runway Requirement**:
-An optional per-**Flight** value `min_length_m`. The flight is compatible only with **Runways** whose `length_m ≥ min_length_m`. Implicitly encodes aircraft weight: heavier flights specify a higher `min_length_m`. Absent means no length constraint.
+An optional per-**Flight** value `min_runway_length_m`. The flight is compatible only with **Runways** whose `length_m ≥ min_runway_length_m`. Implicitly encodes aircraft weight: heavier flights specify a higher `min_runway_length_m`. Absent means no length constraint.
 
 **Ground Crew**:
 A pooled resource of N interchangeable units; one unit is held alongside the **Gate** for the full **Gate Turnaround** window.

@@ -112,7 +112,7 @@ The implementation is split between **deep** modules (small interface, large enc
 | URI | Content shape | Notes |
 | --- | --- | --- |
 | `atc://queue` | `{ flights: QueueEntry[] }` — every flight ever submitted, in submission order. Includes cancelled and unscheduled. Each entry carries: `flight_number`, `operation`, `priority`, `dependencies`, `min_runway_length_m?`, `state` (`submitted`/`scheduled`/`unscheduled`/`cancelled`), `submission_index`, plus the placement (if `scheduled`) or `reason`+`detail`+`blocking_flight_number?` (if `unscheduled`) | Reads current in-memory state; does not trigger recomputation. |
-| `atc://runways` | `{ runways: [{ runway_id, length_m, operations: ScheduleEntry[], busy_minutes, utilization_pct }] }` | Operations sorted by `start_offset_min`. |
+| `atc://runways` | `{ runways: [{ runway_id, length_m, operations: ScheduleEntry[], busy_minutes, utilization_pct, available_windows: [{ start_offset_min, end_offset_min }], next_available_at_offset_min: integer \| null }] }` | Operations sorted by `start_offset_min`. `available_windows` are the gaps between operations (including trailing separation buffers) over `[0, horizon_min]`; `next_available_at_offset_min` is the start of the first such gap that begins at or after the current pass's t=0, or `null` if the runway is saturated for the horizon. |
 | `atc://timeline` | `{ operations: ScheduleEntry[] }` — flat chronological list across the whole airport, sorted by `start_offset_min` then `flight_number` | Runway-agnostic view. |
 
 ### Shared output shapes
@@ -120,26 +120,35 @@ The implementation is split between **deep** modules (small interface, large enc
 **`ScheduleSnapshot`:**
 ```ts
 {
-  generated_at: string,           // ISO-8601 UTC with offset
-  schedule_start_at: string,      // ISO-8601 in chosen timezone — the t=0 anchor
-  timezone: string,               // echoes the IANA name used
+  generated_at: string,           // UTC ISO-8601 instant (minute precision) — when this pass ran
+  schedule_start_at: string,      // UTC ISO-8601 instant (minute precision) — the canonical t=0 anchor (per ADR-0002)
+  timezone: string,               // echoes the IANA name used; presentation only — anchor is always UTC
   horizon_min: integer,
   scheduled: ScheduleEntry[],     // sorted by (start_offset_min, flight_number)
   unscheduled: UnscheduledEntry[], // sorted by flight_number
   totals: { submitted, scheduled, unscheduled, cancelled }   // integer counts
 }
 ```
+The canonical t=0 anchor is **always UTC**. Client-zone rendering happens per-entry via `start_at` / `end_at` on each `ScheduleEntry` (and analogous fields elsewhere).
 
 **`ScheduleEntry`:**
 ```ts
 {
   flight_number, operation, priority,
   runway_id, gate_id,
-  start_offset_min, end_offset_min,      // canonical, deterministic
-  start_at, end_at,                       // ISO-8601 with offset, formatted in timezone
+  start_offset_min, end_offset_min,      // operation span: touchdown→gate-release (arrival) | gate-claim→wheels-up (departure)
+  runway_window: { start_offset_min, end_offset_min },  // exclusive runway occupancy for this operation
+  gate_window:   { start_offset_min, end_offset_min },  // exclusive gate occupancy for this operation
+  start_at, end_at,                       // ISO-8601 with offset, formatted in client timezone — render of operation span
   predecessors: string[]                  // echoes dependencies
 }
 ```
+Derivation rules (the Scheduler emits both windows directly; tests and clients consume them as-is):
+
+- **Arrival:** `runway_window = [start_offset_min, start_offset_min + ATC_LANDING_DURATION_MIN]`; `gate_window = [runway_window.end_offset_min, end_offset_min]`; `end_offset_min = gate_window.end_offset_min`.
+- **Departure:** `gate_window = [start_offset_min, start_offset_min + ATC_GATE_TURNAROUND_MIN]`; `runway_window = [gate_window.end_offset_min, end_offset_min]`; `end_offset_min = runway_window.end_offset_min`.
+
+The trailing **Separation Buffer** is enforced as a gap **between** consecutive runway operations (not folded into `runway_window`): `next.runway_window.start_offset_min ≥ prev.runway_window.end_offset_min + separation_for(prev.operation, next.operation)`. Overlap tests on a single runway/gate become "no two windows overlap"; the separation rule is a second, independent assertion.
 
 **`UnscheduledEntry`:**
 ```ts
@@ -170,7 +179,7 @@ The implementation is split between **deep** modules (small interface, large enc
   schedule_completion: { schedule_start_at, makespan_min, completion_at } | null
 }
 ```
-Runway `busy_minutes` includes the trailing separation buffer (the runway is unavailable during it). Ground crew is *not* in `resources` — the brief names only runways and gates.
+`schedule_start_at` and `completion_at` are **UTC ISO-8601 instants** (presentation in the client zone happens in tool responses that carry `timezone`, not here). `schedule_completion` is `null` iff `generate_schedule` has never run in this process; an all-unscheduled pass returns `{ schedule_start_at, makespan_min: 0, completion_at: schedule_start_at }`. Runway `busy_minutes` includes the trailing separation buffer (the runway is unavailable during it); gate `busy_minutes` is the sum of `gate_window` durations (no trailing buffer — gate turnaround already covers it). Ground crew is *not* in `resources` — the brief names only runways and gates.
 
 **`BottleneckReport`:**
 ```ts
@@ -178,13 +187,14 @@ Runway `busy_minutes` includes the trailing separation buffer (the runway is una
   bottleneck_exists: boolean,
   chain_length: integer,                  // 0 if !exists
   total_elapsed_min: integer,
-  cumulative_operation_min: integer,
-  cumulative_buffer_min: integer,         // total_elapsed - cumulative_operation
-  start_at?: string, end_at?: string,
+  cumulative_operation_min: integer,      // sum of (end_offset_min - start_offset_min) across chain nodes
+  cumulative_wait_min: integer,           // total_elapsed - cumulative_operation; folds in dependency-buffer waits AND resource-contention gaps
+  start_at?: string, end_at?: string,     // client-tz render of the chain's first start / last end
   chain: ScheduleEntry[],                 // ordered first → last
   note?: string                           // e.g. "no scheduled dependency edges"
 }
 ```
+`cumulative_wait_min` is intentionally broad: in greedy scheduling, gaps between predecessor end and dependent start can come from the dependency buffer, from resource contention, or from both — splitting them cleanly is not tractable without re-running the scheduler. Clients that need to attribute waiting should compare against `ATC_DEPENDENCY_BUFFER_MIN × (chain_length − 1)`.
 
 ### Environment variables
 

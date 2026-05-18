@@ -13,4 +13,4 @@ We chose (1) because a 5-flight chain of 2-minute operations is not the same kin
 
 ## Consequences
 
-Determinism is preserved across passes because every tiebreaker is a total order. The output exposes both `cumulative_operation_min` and `cumulative_buffer_min` so the AI agent can reason about whether the bottleneck is driven by operation time or by waiting.
+Determinism is preserved across passes because every tiebreaker is a total order. The output exposes both `cumulative_operation_min` and `cumulative_wait_min` so the AI agent can reason about whether the bottleneck is driven by operation time or by waiting. `cumulative_wait_min` is deliberately broad: it folds in dependency-buffer waits *and* resource-contention gaps, because in greedy scheduling these cannot be cleanly separated without re-running the scheduler. Clients that need to attribute waiting compare against `ATC_DEPENDENCY_BUFFER_MIN × (chain_length − 1)`.

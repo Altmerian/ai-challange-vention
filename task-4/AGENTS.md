@@ -15,9 +15,9 @@ This file provides guidance to AI Agents how to implement MCP server and verify 
 
 ## Documentation audience separation
 
-- **`README.md`** is the **only** human-facing document. It is read by the evaluators of this submission and must cover, with nothing extra: install/build, env vars and accepted values, run + MCP-client connection instructions, and the tool/resource reference. Keep it tight — no design rationale, no decision logs, no internal terminology.
-- **Everything else in `task-4/`** — `CLAUDE.md`, `AGENTS.md`, `CONTEXT.md`, `docs/adr/`, `PRD.md`, `implementation-plan.md`, test files, and any future agent-only artefacts — is **for AI agents implementing or modifying the server**. Domain glossary, design decisions, edge cases, scheduling internals, and test scenarios live here, not in `README.md`.
-- The `report.md` is the human-facing post-mortem of what was built and how — separate from `README.md`'s "how to use it".
+- **`README.md`** is the **evaluator-facing usage document** — the only `task-4/` file the submission evaluator opens to install, run, and verify the server. It covers, with nothing extra: install/build, env vars and accepted values, run + MCP-client connection instructions, and the tool/resource reference. Keep it tight — no design rationale, no decision logs, no internal terminology.
+- **`report.md`** is the **human-facing post-mortem** — scheduling approach, tooling, what worked, what didn't. Read by humans after they've used the server; not part of the usage path.
+- **Everything else in `task-4/`** — `CLAUDE.md`, `AGENTS.md`, `CONTEXT.md`, `docs/adr/`, `PRD.md`, `implementation-plan.md`, test files, and any future agent-only artifacts — is **for AI agents implementing or modifying the server**. Domain glossary, design decisions, edge cases, scheduling internals, and test scenarios live here, not in `README.md`.
 
 ## Verifying MCP Server using MCP Inspector
 
