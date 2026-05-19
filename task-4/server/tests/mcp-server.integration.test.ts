@@ -730,6 +730,156 @@ describe("atc://timeline resource", () => {
   });
 });
 
+describe("brief scenario — Connecting Flight", () => {
+  it("schedules A→B with the dependency buffer respected and timeline ordering reflecting the dependency", async () => {
+    const { client, state, cleanup } = await connectClient();
+    try {
+      // 1. Reset.
+      await client.callTool({ name: "reset_state", arguments: {} });
+
+      // 2. Submit inbound arrival A.
+      const aResp = await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "A", operation: "arrival", priority: "high" },
+      });
+      expect(aResp.isError).toBeFalsy();
+
+      // 3. Submit outbound departure B with dependencies: ["A"].
+      const bResp = await client.callTool({
+        name: "submit_flight",
+        arguments: {
+          flight_number: "B",
+          operation: "departure",
+          priority: "medium",
+          dependencies: ["A"],
+        },
+      });
+      expect(bResp.isError).toBeFalsy();
+
+      // 4. Generate the schedule.
+      const snap = await generateSchedule(client);
+      expect(snap.scheduled).toHaveLength(2);
+      expect(snap.unscheduled).toHaveLength(0);
+
+      const a = snap.scheduled.find((e) => e.flight_number === "A")!;
+      const b = snap.scheduled.find((e) => e.flight_number === "B")!;
+      expect(b.predecessors).toEqual(["A"]);
+
+      // 5. Assert: B.start ≥ A.end + ATC_DEPENDENCY_BUFFER_MIN.
+      const buffer = state.config.dependencyBufferMin;
+      expect(b.start_offset_min).toBeGreaterThanOrEqual(a.end_offset_min + buffer);
+
+      // 6. Timeline ordering reflects the dependency: A appears before B.
+      const timeline = await readJson<{ operations: ScheduleEntryShape[] }>(
+        client,
+        "atc://timeline",
+      );
+      const aIdx = timeline.operations.findIndex((o) => o.flight_number === "A");
+      const bIdx = timeline.operations.findIndex((o) => o.flight_number === "B");
+      expect(aIdx).toBeGreaterThanOrEqual(0);
+      expect(bIdx).toBeGreaterThan(aIdx);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("flags dependency_missing on the queue when a predecessor was never submitted", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: {
+          flight_number: "ORPHAN",
+          operation: "departure",
+          priority: "low",
+          dependencies: ["GHOST"],
+        },
+      });
+      await generateSchedule(client);
+      const queue = await readJson<{ flights: Array<Record<string, unknown>> }>(
+        client,
+        "atc://queue",
+      );
+      const orphan = queue.flights.find((f) => f.flight_number === "ORPHAN");
+      expect(orphan?.state).toBe("unscheduled");
+      expect(orphan?.reason).toBe("dependency_missing");
+      expect(orphan?.blocking_flight_number).toBe("GHOST");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("surfaces dependency_unscheduled with blocking_flight_number on a cascade", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      // HVY unscheduled (no_compatible_runway). B depends on HVY → cascade.
+      await client.callTool({
+        name: "submit_flight",
+        arguments: {
+          flight_number: "HVY",
+          operation: "departure",
+          priority: "high",
+          min_runway_length_m: 9999,
+        },
+      });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: {
+          flight_number: "B",
+          operation: "departure",
+          priority: "high",
+          dependencies: ["HVY"],
+        },
+      });
+      await generateSchedule(client);
+      const queue = await readJson<{ flights: Array<Record<string, unknown>> }>(
+        client,
+        "atc://queue",
+      );
+      const b = queue.flights.find((f) => f.flight_number === "B");
+      expect(b?.state).toBe("unscheduled");
+      expect(b?.reason).toBe("dependency_unscheduled");
+      expect(b?.blocking_flight_number).toBe("HVY");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("flags every cycle member with dependency_cycle and a detail listing members", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: {
+          flight_number: "A",
+          operation: "arrival",
+          priority: "medium",
+          dependencies: ["B"],
+        },
+      });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: {
+          flight_number: "B",
+          operation: "departure",
+          priority: "medium",
+          dependencies: ["A"],
+        },
+      });
+      const snap = await generateSchedule(client);
+      expect(snap.scheduled).toHaveLength(0);
+      expect(snap.unscheduled).toHaveLength(2);
+      for (const e of snap.unscheduled) {
+        expect(e.reason).toBe("dependency_cycle");
+        expect(e.detail).toContain("A");
+        expect(e.detail).toContain("B");
+      }
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
 describe("brief scenario — Morning Rush", () => {
   it("schedules four mixed-priority flights without runway/gate overlap; higher priority placed earlier when contested", async () => {
     const { client, cleanup } = await connectClient();

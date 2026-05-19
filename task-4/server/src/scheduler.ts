@@ -1,25 +1,26 @@
 /**
- * Pure deterministic greedy scheduler — slice 3.
- *
- * Treats every non-cancelled flight as an independent **Ready Flight**: dependency
- * edges are recorded on the flight but not yet enforced. Slice 4 layers the
- * dependency DAG, cycle detection, and the `dependency_*` reasons on top.
+ * Pure deterministic greedy dependency-aware scheduler.
  *
  * Algorithm (per ADR-0001 / PRD `Scheduling Pass`):
- *   1. Filter out cancelled flights, sort by (priority desc, submission_index asc).
- *   2. For each flight in order, find the **earliest feasible (start, end) slot**
- *      across every compatible runway × every gate × the ground-crew pool. This
- *      is gap-aware: a later-placed flight may legitimately slot *before* an
- *      already-placed flight in time as long as no resource conflict arises and
- *      runway separation buffers fit on both sides.
- *   3. Reserve the chosen slot; emit a `ScheduleEntry`. If no slot fits within
- *      the horizon, emit an `UnscheduledEntry`.
- *
- * Resource selection picks the assignment yielding the earliest feasible start,
- * tiebreaking by lowest runway index then lowest gate index. Ground-crew unit
- * selection (within a fixed gate window) picks the smallest-index unit that is
- * free during the gate window — crew is a pool and not part of the published
- * tiebreak rule, but determinism still requires a stable pick.
+ *   1. Build dependency adjacency on the active subgraph (non-cancelled flights).
+ *   2. Detect strongly-connected components via Tarjan; every SCC of size ≥ 2
+ *      becomes `dependency_cycle` (self-loops are rejected at submission, so
+ *      single-node SCCs are always acyclic).
+ *   3. For each remaining flight, scan its `dependencies` in order; the **first**
+ *      predecessor that is missing from the queue triggers `dependency_missing`,
+ *      the first one in state `cancelled` triggers `dependency_cancelled`.
+ *      `blocking_flight_number` points at that predecessor (ADR-0004).
+ *   4. Run a ready-heap loop: at each step pop the highest-priority flight whose
+ *      predecessors are all placed, tiebroken by `submission_index`. Compute its
+ *      earliest start as `max(predecessor.end_offset_min) + ATC_DEPENDENCY_BUFFER_MIN`
+ *      and find the earliest feasible slot across compatible runways × any gate ×
+ *      the ground-crew pool. Earliest feasible placement is gap-aware: a later-
+ *      placed flight may legitimately slot *before* an already-placed flight in
+ *      time as long as no resource conflict arises and runway separation buffers
+ *      fit on both sides. No displacement, no priority inheritance.
+ *   5. After the loop, cascade `dependency_unscheduled` to any active flight not
+ *      yet placed — its first unscheduled predecessor (in `dependencies` order)
+ *      becomes its `blocking_flight_number`.
  *
  * The module takes `now` and `timezone` as explicit inputs so it remains pure of
  * I/O and clock access.
@@ -133,23 +134,116 @@ export function runSchedulingPass(
   const gates = buildGates(config);
   const crew = buildCrew(config);
 
-  const eligible = queue
-    .filter((f) => f.state !== "cancelled")
-    .slice()
-    .sort(compareForPass);
-
-  const scheduledEntries: ScheduleEntry[] = [];
-  const unscheduledEntries: UnscheduledEntry[] = [];
-
   const scheduleStart = truncateToMinute(now);
   const generatedAt = toUtcMinuteIso(scheduleStart);
 
-  for (const flight of eligible) {
+  const queueByNumber = new Map<string, Flight>();
+  for (const f of queue) queueByNumber.set(f.flightNumber, f);
+
+  const active = queue.filter((f) => f.state !== "cancelled");
+  const activeByNumber = new Map<string, Flight>();
+  for (const f of active) activeByNumber.set(f.flightNumber, f);
+
+  const scheduledMap = new Map<string, ScheduleEntry>();
+  const unscheduledMap = new Map<string, UnscheduledEntry>();
+
+  // 1. Cycles — every SCC of size ≥ 2 in the active subgraph is a cycle.
+  const cycleMembers = findCycleMembers(active, activeByNumber);
+  if (cycleMembers.size > 0) {
+    const cycleLabel = [...cycleMembers].sort().join(", ");
+    for (const flightNumber of cycleMembers) {
+      const f = activeByNumber.get(flightNumber)!;
+      unscheduledMap.set(flightNumber, {
+        flight_number: flightNumber,
+        operation: f.operation,
+        priority: f.priority,
+        reason: "dependency_cycle",
+        detail: `cycle members: ${cycleLabel}`,
+      });
+    }
+  }
+
+  // 2. Missing / cancelled predecessors — direct neighbours only. Descendants
+  //    fall to the cascade in step 4 as `dependency_unscheduled`.
+  for (const f of active) {
+    if (unscheduledMap.has(f.flightNumber)) continue;
+    for (const dep of f.dependencies) {
+      const pred = queueByNumber.get(dep);
+      if (pred === undefined) {
+        unscheduledMap.set(f.flightNumber, {
+          flight_number: f.flightNumber,
+          operation: f.operation,
+          priority: f.priority,
+          reason: "dependency_missing",
+          detail: `predecessor ${dep} not found in queue`,
+          blocking_flight_number: dep,
+        });
+        break;
+      }
+      if (pred.state === "cancelled") {
+        unscheduledMap.set(f.flightNumber, {
+          flight_number: f.flightNumber,
+          operation: f.operation,
+          priority: f.priority,
+          reason: "dependency_cancelled",
+          detail: `predecessor ${dep} is cancelled`,
+          blocking_flight_number: dep,
+        });
+        break;
+      }
+    }
+  }
+
+  // 3. Ready-heap loop over remaining flights.
+  // `dependents` is the reverse adjacency over active flights that are still
+  // candidates (not yet unscheduled). Predecessors that were ruled out as
+  // missing/cancelled/cycle stay in the pending count so the dependent never
+  // reaches the ready heap — the cascade in step 4 then marks it
+  // `dependency_unscheduled`. Skipping them here would let descendants of a
+  // pre-loop unscheduled predecessor get scheduled instead of cascaded.
+  const dependents = new Map<string, string[]>();
+  const pendingPredCount = new Map<string, number>();
+  const eligible: Flight[] = [];
+  for (const f of active) {
+    if (unscheduledMap.has(f.flightNumber)) continue;
+    let count = 0;
+    for (const dep of f.dependencies) {
+      const pred = activeByNumber.get(dep);
+      if (pred === undefined) continue;
+      count++;
+      // Only register `f` as a dependent of `dep` when `dep` can still be
+      // placed — an unscheduled `dep` will never emit a placement event, so
+      // the entry would be dead weight.
+      if (!unscheduledMap.has(dep)) {
+        const list = dependents.get(dep);
+        if (list === undefined) dependents.set(dep, [f.flightNumber]);
+        else list.push(f.flightNumber);
+      }
+    }
+    pendingPredCount.set(f.flightNumber, count);
+    eligible.push(f);
+  }
+
+  const ready: Flight[] = eligible.filter(
+    (f) => (pendingPredCount.get(f.flightNumber) ?? 0) === 0,
+  );
+
+  while (ready.length > 0) {
+    ready.sort(compareForPass);
+    const flight = ready.shift()!;
+
+    let earliestStart = 0;
+    for (const dep of flight.dependencies) {
+      const predEntry = scheduledMap.get(dep);
+      if (predEntry === undefined) continue;
+      const candidate = predEntry.end_offset_min + config.dependencyBufferMin;
+      if (candidate > earliestStart) earliestStart = candidate;
+    }
+
     const requiredLength = flight.minRunwayLengthM ?? 0;
     const compatibleRunways = runways.filter((r) => r.length_m >= requiredLength);
-
     if (compatibleRunways.length === 0) {
-      unscheduledEntries.push({
+      unscheduledMap.set(flight.flightNumber, {
         flight_number: flight.flightNumber,
         operation: flight.operation,
         priority: flight.priority,
@@ -162,9 +256,16 @@ export function runSchedulingPass(
       continue;
     }
 
-    const placement = findEarliestPlacement(flight, compatibleRunways, gates, crew, config);
+    const placement = findEarliestPlacement(
+      flight,
+      compatibleRunways,
+      gates,
+      crew,
+      config,
+      earliestStart,
+    );
     if (placement === null) {
-      unscheduledEntries.push({
+      unscheduledMap.set(flight.flightNumber, {
         flight_number: flight.flightNumber,
         operation: flight.operation,
         priority: flight.priority,
@@ -175,7 +276,7 @@ export function runSchedulingPass(
     }
 
     commitPlacement(placement, flight.operation, crew);
-    scheduledEntries.push({
+    scheduledMap.set(flight.flightNumber, {
       flight_number: flight.flightNumber,
       operation: flight.operation,
       priority: flight.priority,
@@ -189,10 +290,51 @@ export function runSchedulingPass(
       end_at: formatOffsetInZone(placement.end_offset_min, scheduleStart, timezone),
       predecessors: flight.dependencies,
     });
+
+    for (const depFlight of dependents.get(flight.flightNumber) ?? []) {
+      const remaining = (pendingPredCount.get(depFlight) ?? 0) - 1;
+      pendingPredCount.set(depFlight, remaining);
+      if (remaining === 0) {
+        ready.push(activeByNumber.get(depFlight)!);
+      }
+    }
   }
 
-  scheduledEntries.sort(compareScheduledEntries);
-  unscheduledEntries.sort((a, b) => compareFlightNumber(a.flight_number, b.flight_number));
+  // 4. Cascade `dependency_unscheduled`. Any active flight not yet placed and
+  //    not yet flagged must depend on an unscheduled flight; surface the first
+  //    such predecessor (in `dependencies` order) as the blocking flight.
+  // Iterate until quiescent: a flight cascaded in one round becomes a valid
+  // blocker for its own dependents in the next.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const f of active) {
+      if (scheduledMap.has(f.flightNumber)) continue;
+      if (unscheduledMap.has(f.flightNumber)) continue;
+      let blocking: string | undefined;
+      for (const dep of f.dependencies) {
+        if (unscheduledMap.has(dep)) {
+          blocking = dep;
+          break;
+        }
+      }
+      if (blocking === undefined) continue;
+      unscheduledMap.set(f.flightNumber, {
+        flight_number: f.flightNumber,
+        operation: f.operation,
+        priority: f.priority,
+        reason: "dependency_unscheduled",
+        detail: `predecessor ${blocking} is unscheduled`,
+        blocking_flight_number: blocking,
+      });
+      changed = true;
+    }
+  }
+
+  const scheduledEntries = [...scheduledMap.values()].sort(compareScheduledEntries);
+  const unscheduledEntries = [...unscheduledMap.values()].sort((a, b) =>
+    compareFlightNumber(a.flight_number, b.flight_number),
+  );
 
   return {
     generated_at: generatedAt,
@@ -228,6 +370,66 @@ export function separationFor(
     return prevOp === "arrival" ? config.separationLandingMin : config.separationTakeoffMin;
   }
   return config.separationMixedMin;
+}
+
+/**
+ * Tarjan SCC restricted to the active subgraph. Returns every flight that is
+ * a member of a strongly-connected component of size ≥ 2. Self-loops are
+ * rejected at submission, so single-node SCCs are always acyclic.
+ *
+ * Recursive — flight counts in a scheduling pass are small (tens at most),
+ * comfortably below Node's default stack depth.
+ */
+function findCycleMembers(
+  active: readonly Flight[],
+  activeByNumber: ReadonlyMap<string, Flight>,
+): Set<string> {
+  const adj = new Map<string, string[]>();
+  for (const f of active) {
+    const targets: string[] = [];
+    for (const d of f.dependencies) if (activeByNumber.has(d)) targets.push(d);
+    adj.set(f.flightNumber, targets);
+  }
+
+  let index = 0;
+  const indexMap = new Map<string, number>();
+  const lowlink = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const cycleMembers = new Set<string>();
+
+  function strongconnect(v: string): void {
+    indexMap.set(v, index);
+    lowlink.set(v, index);
+    index++;
+    stack.push(v);
+    onStack.add(v);
+
+    for (const w of adj.get(v) ?? []) {
+      if (!indexMap.has(w)) {
+        strongconnect(w);
+        lowlink.set(v, Math.min(lowlink.get(v)!, lowlink.get(w)!));
+      } else if (onStack.has(w)) {
+        lowlink.set(v, Math.min(lowlink.get(v)!, indexMap.get(w)!));
+      }
+    }
+
+    if (lowlink.get(v)! === indexMap.get(v)!) {
+      const scc: string[] = [];
+      while (true) {
+        const w = stack.pop()!;
+        onStack.delete(w);
+        scc.push(w);
+        if (w === v) break;
+      }
+      if (scc.length > 1) for (const x of scc) cycleMembers.add(x);
+    }
+  }
+
+  for (const f of active) {
+    if (!indexMap.has(f.flightNumber)) strongconnect(f.flightNumber);
+  }
+  return cycleMembers;
 }
 
 function buildRunways(config: Config): RunwaySlot[] {
@@ -272,6 +474,7 @@ function findEarliestPlacement(
   gates: readonly GateSlot[],
   crew: readonly CrewSlot[],
   config: Config,
+  earliestStart: number,
 ): Placement | null {
   let best: { placement: Placement; runwayIdx: number; gateIdx: number } | null = null;
 
@@ -287,6 +490,7 @@ function findEarliestPlacement(
         runwayBusy,
         crew,
         config,
+        earliestStart,
       );
       if (candidate === null) continue;
       if (candidate.end_offset_min > config.maxHorizonMin) continue;
@@ -361,13 +565,14 @@ function projectPlacement(
   runwayBusy: readonly ResourceWindow[],
   crew: readonly CrewSlot[],
   config: Config,
+  earliestStart: number,
 ): Placement | null {
   const landing = config.landingDurationMin;
   const takeoff = config.takeoffDurationMin;
   const turnaround = config.gateTurnaroundMin;
   const horizon = config.maxHorizonMin;
 
-  let t = 0;
+  let t = earliestStart;
   // The iteration is bounded by the total number of resource intervals (each
   // pass advances `t` past at least one boundary). 256 is generous.
   for (let iter = 0; iter < 256; iter++) {
@@ -388,7 +593,6 @@ function projectPlacement(
 
     const runwayNext = nextFreeWindow(runwayBusy, runwayWindow.start_offset_min, runwayDuration);
     if (runwayNext > runwayWindow.start_offset_min) {
-      // Advance `t` so the runway_window starts at `runwayNext`.
       t = operation === "arrival" ? runwayNext : runwayNext - turnaround;
       continue;
     }

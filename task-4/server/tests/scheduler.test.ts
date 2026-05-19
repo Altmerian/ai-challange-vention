@@ -395,3 +395,382 @@ describe("Scheduler — outputs", () => {
     expect(proj(a)).toEqual(proj(b));
   });
 });
+
+describe("Scheduler — dependencies", () => {
+  it("places a 2-flight A→B chain with the dependency buffer between predecessor end and dependent start", () => {
+    const cfg = makeConfig();
+    const snap = pass(
+      [
+        flight(0, { flightNumber: "A", operation: "arrival" }),
+        flight(1, {
+          flightNumber: "B",
+          operation: "departure",
+          dependencies: ["A"],
+        }),
+      ],
+      cfg,
+    );
+    expect(snap.scheduled).toHaveLength(2);
+    const a = snap.scheduled.find((e) => e.flight_number === "A")!;
+    const b = snap.scheduled.find((e) => e.flight_number === "B")!;
+    expect(a.end_offset_min).toBe(35); // landing 5 + turnaround 30
+    expect(b.start_offset_min).toBeGreaterThanOrEqual(
+      a.end_offset_min + cfg.dependencyBufferMin,
+    );
+    expect(b.predecessors).toEqual(["A"]);
+  });
+
+  it("places a 3-flight A→B→C chain with the buffer respected at each edge", () => {
+    const cfg = makeConfig();
+    const snap = pass(
+      [
+        flight(0, { flightNumber: "A", operation: "arrival" }),
+        flight(1, { flightNumber: "B", operation: "departure", dependencies: ["A"] }),
+        flight(2, { flightNumber: "C", operation: "arrival", dependencies: ["B"] }),
+      ],
+      cfg,
+    );
+    expect(snap.scheduled).toHaveLength(3);
+    const a = snap.scheduled.find((e) => e.flight_number === "A")!;
+    const b = snap.scheduled.find((e) => e.flight_number === "B")!;
+    const c = snap.scheduled.find((e) => e.flight_number === "C")!;
+    expect(b.start_offset_min).toBeGreaterThanOrEqual(
+      a.end_offset_min + cfg.dependencyBufferMin,
+    );
+    expect(c.start_offset_min).toBeGreaterThanOrEqual(
+      b.end_offset_min + cfg.dependencyBufferMin,
+    );
+  });
+
+  it("resolves a forward reference: dependent submitted before predecessor", () => {
+    // B submitted first, depends on A. Both must schedule, with B after A + buffer.
+    const cfg = makeConfig();
+    const snap = pass(
+      [
+        flight(0, {
+          flightNumber: "B",
+          operation: "departure",
+          dependencies: ["A"],
+        }),
+        flight(1, { flightNumber: "A", operation: "arrival" }),
+      ],
+      cfg,
+    );
+    expect(snap.scheduled).toHaveLength(2);
+    const a = snap.scheduled.find((e) => e.flight_number === "A")!;
+    const b = snap.scheduled.find((e) => e.flight_number === "B")!;
+    expect(b.start_offset_min).toBeGreaterThanOrEqual(
+      a.end_offset_min + cfg.dependencyBufferMin,
+    );
+  });
+
+  it("flags dependency_missing when a predecessor was never submitted", () => {
+    const snap = pass([
+      flight(0, {
+        flightNumber: "B",
+        operation: "departure",
+        dependencies: ["GHOST"],
+      }),
+    ]);
+    expect(snap.scheduled).toHaveLength(0);
+    expect(snap.unscheduled).toHaveLength(1);
+    expect(snap.unscheduled[0]).toMatchObject({
+      flight_number: "B",
+      reason: "dependency_missing",
+      blocking_flight_number: "GHOST",
+    });
+  });
+
+  it("does not let a missing-pred dependent block unrelated flights (lazy resolution per ADR-0004)", () => {
+    const snap = pass([
+      flight(0, { flightNumber: "ORPHAN", dependencies: ["GHOST"] }),
+      flight(1, { flightNumber: "A1", operation: "arrival" }),
+    ]);
+    expect(snap.scheduled.map((e) => e.flight_number)).toEqual(["A1"]);
+    expect(snap.unscheduled[0]?.flight_number).toBe("ORPHAN");
+  });
+
+  it("flags dependency_cycle on every member of a 2-cycle", () => {
+    // A↔B
+    const snap = pass([
+      flight(0, { flightNumber: "A", dependencies: ["B"] }),
+      flight(1, { flightNumber: "B", dependencies: ["A"] }),
+    ]);
+    expect(snap.scheduled).toHaveLength(0);
+    expect(snap.unscheduled).toHaveLength(2);
+    for (const e of snap.unscheduled) {
+      expect(e.reason).toBe("dependency_cycle");
+      expect(e.detail).toContain("A");
+      expect(e.detail).toContain("B");
+      // blocking_flight_number is optional and not set for cycles (PRD).
+      expect(e.blocking_flight_number).toBeUndefined();
+    }
+  });
+
+  it("flags dependency_cycle on a 3-cycle", () => {
+    const snap = pass([
+      flight(0, { flightNumber: "A", dependencies: ["B"] }),
+      flight(1, { flightNumber: "B", dependencies: ["C"] }),
+      flight(2, { flightNumber: "C", dependencies: ["A"] }),
+    ]);
+    expect(snap.scheduled).toHaveLength(0);
+    expect(snap.unscheduled.map((e) => e.flight_number).sort()).toEqual(["A", "B", "C"]);
+    for (const e of snap.unscheduled) expect(e.reason).toBe("dependency_cycle");
+  });
+
+  it("cascades dependency_unscheduled when a predecessor is unscheduled (no_compatible_runway → descendant)", () => {
+    // HVY is unscheduled (no_compatible_runway). B depends on HVY → dependency_unscheduled.
+    const snap = pass(
+      [
+        flight(0, {
+          flightNumber: "HVY",
+          operation: "departure",
+          priority: "high",
+          minRunwayLengthM: 9999,
+        }),
+        flight(1, {
+          flightNumber: "B",
+          operation: "departure",
+          dependencies: ["HVY"],
+        }),
+      ],
+      makeConfig({ runwayLengthsM: [3000, 4000] }),
+    );
+    expect(snap.scheduled).toHaveLength(0);
+    const hvy = snap.unscheduled.find((e) => e.flight_number === "HVY")!;
+    const b = snap.unscheduled.find((e) => e.flight_number === "B")!;
+    expect(hvy.reason).toBe("no_compatible_runway");
+    expect(b.reason).toBe("dependency_unscheduled");
+    expect(b.blocking_flight_number).toBe("HVY");
+  });
+
+  it("propagates dependency_unscheduled transitively through a chain", () => {
+    // HVY (unscheduled) → X (dependency_unscheduled) → Y (dependency_unscheduled blocking=X)
+    const snap = pass(
+      [
+        flight(0, {
+          flightNumber: "HVY",
+          operation: "departure",
+          minRunwayLengthM: 9999,
+        }),
+        flight(1, {
+          flightNumber: "X",
+          operation: "arrival",
+          dependencies: ["HVY"],
+        }),
+        flight(2, {
+          flightNumber: "Y",
+          operation: "departure",
+          dependencies: ["X"],
+        }),
+      ],
+      makeConfig({ runwayLengthsM: [3000, 4000] }),
+    );
+    const x = snap.unscheduled.find((e) => e.flight_number === "X")!;
+    const y = snap.unscheduled.find((e) => e.flight_number === "Y")!;
+    expect(x.reason).toBe("dependency_unscheduled");
+    expect(x.blocking_flight_number).toBe("HVY");
+    expect(y.reason).toBe("dependency_unscheduled");
+    expect(y.blocking_flight_number).toBe("X");
+  });
+
+  it("honours the LATER of multiple predecessors' end offsets plus the buffer", () => {
+    // {A, C} → B. A finishes earlier than C. B.start must be ≥ C.end + buffer.
+    // A and C are independent arrivals on different runways; pin C later than A
+    // by stuffing it after a single-runway constraint? Simpler: make A short
+    // and C long via crew exclusivity. Use a config where the only runway forces
+    // serial landings.
+    const cfg = makeConfig({
+      runwayLengthsM: [3000],
+      gateCount: 4,
+      groundCrewCount: 4,
+    });
+    const snap = pass(
+      [
+        flight(0, { flightNumber: "A", operation: "arrival" }),
+        flight(1, { flightNumber: "C", operation: "arrival" }),
+        flight(2, {
+          flightNumber: "B",
+          operation: "departure",
+          dependencies: ["A", "C"],
+        }),
+      ],
+      cfg,
+    );
+    expect(snap.scheduled).toHaveLength(3);
+    const a = snap.scheduled.find((e) => e.flight_number === "A")!;
+    const c = snap.scheduled.find((e) => e.flight_number === "C")!;
+    const b = snap.scheduled.find((e) => e.flight_number === "B")!;
+    const later = Math.max(a.end_offset_min, c.end_offset_min);
+    expect(b.start_offset_min).toBeGreaterThanOrEqual(later + cfg.dependencyBufferMin);
+  });
+
+  it("does not inherit priority — a low dependent of a high predecessor stays low", () => {
+    // HIGH-PRED at t=0; LOW-DEP depends on it; HIGH-OTHER is a separate high arrival.
+    // HIGH-OTHER beats LOW-DEP to the next ready slot — they compete at low priority.
+    const cfg = makeConfig({ runwayLengthsM: [3000], gateCount: 4 });
+    const snap = pass(
+      [
+        flight(0, {
+          flightNumber: "HIGH-PRED",
+          operation: "arrival",
+          priority: "high",
+        }),
+        flight(1, {
+          flightNumber: "LOW-DEP",
+          operation: "arrival",
+          priority: "low",
+          dependencies: ["HIGH-PRED"],
+        }),
+        flight(2, {
+          flightNumber: "HIGH-OTHER",
+          operation: "arrival",
+          priority: "high",
+        }),
+      ],
+      cfg,
+    );
+    expect(snap.scheduled).toHaveLength(3);
+    const lowDep = snap.scheduled.find((e) => e.flight_number === "LOW-DEP")!;
+    const highOther = snap.scheduled.find((e) => e.flight_number === "HIGH-OTHER")!;
+    // HIGH-OTHER (high prio, no deps) should be placed before the low dependent
+    // even though the dependent's predecessor is at t=0.
+    expect(highOther.start_offset_min).toBeLessThan(lowDep.start_offset_min);
+  });
+
+  it("does not displace an already-placed flight when a later dependent needs an earlier slot", () => {
+    // BLOCKER placed at t=0. LATE-DEP depends on PRED that lands later — but
+    // BLOCKER's slot is never freed.
+    const cfg = makeConfig({ runwayLengthsM: [3000], gateCount: 4 });
+    const snap = pass(
+      [
+        flight(0, {
+          flightNumber: "BLOCKER",
+          operation: "arrival",
+          priority: "low",
+        }),
+        flight(1, { flightNumber: "PRED", operation: "arrival", priority: "high" }),
+        flight(2, {
+          flightNumber: "LATE-DEP",
+          operation: "departure",
+          priority: "high",
+          dependencies: ["PRED"],
+        }),
+      ],
+      cfg,
+    );
+    const blocker = snap.scheduled.find((e) => e.flight_number === "BLOCKER")!;
+    const pred = snap.scheduled.find((e) => e.flight_number === "PRED")!;
+    // PRED (high, no deps) wins t=0. BLOCKER (low) settles after PRED's runway
+    // freed. Regardless of order, BLOCKER's slot is not displaced — its offsets
+    // do not change once placed. Assert that BLOCKER's start is set and stable
+    // by checking it's >= PRED.runway_end + separation.
+    expect(pred.start_offset_min).toBe(0);
+    expect(blocker.runway_window.start_offset_min).toBeGreaterThanOrEqual(
+      pred.runway_window.end_offset_min + cfg.separationLandingMin,
+    );
+  });
+
+  it("populates ScheduleEntry.predecessors as an echo of the dependencies list", () => {
+    const snap = pass([
+      flight(0, { flightNumber: "A", operation: "arrival" }),
+      flight(1, { flightNumber: "B", operation: "arrival" }),
+      flight(2, {
+        flightNumber: "C",
+        operation: "departure",
+        dependencies: ["A", "B"],
+      }),
+    ]);
+    const c = snap.scheduled.find((e) => e.flight_number === "C")!;
+    expect(c.predecessors).toEqual(["A", "B"]);
+  });
+
+  it("cascades dependency_unscheduled when a predecessor was flagged dependency_missing in the pre-loop phase", () => {
+    // ORPHAN depends on GHOST (missing) → ORPHAN gets dependency_missing.
+    // C depends on ORPHAN → C must NOT be scheduled; it must cascade to
+    // dependency_unscheduled with blocking=ORPHAN. (Pre-fix bug: C entered
+    // the ready heap with pending count 0 and was placed.)
+    const snap = pass([
+      flight(0, {
+        flightNumber: "ORPHAN",
+        operation: "departure",
+        dependencies: ["GHOST"],
+      }),
+      flight(1, {
+        flightNumber: "C",
+        operation: "arrival",
+        dependencies: ["ORPHAN"],
+      }),
+    ]);
+    expect(snap.scheduled).toHaveLength(0);
+    const orphan = snap.unscheduled.find((e) => e.flight_number === "ORPHAN")!;
+    const c = snap.unscheduled.find((e) => e.flight_number === "C")!;
+    expect(orphan.reason).toBe("dependency_missing");
+    expect(c.reason).toBe("dependency_unscheduled");
+    expect(c.blocking_flight_number).toBe("ORPHAN");
+  });
+
+  it("cascades dependency_unscheduled to descendants of cycle members", () => {
+    // A↔B (cycle). D depends on A → D must NOT schedule; it cascades to
+    // dependency_unscheduled blocking=A.
+    const snap = pass([
+      flight(0, { flightNumber: "A", dependencies: ["B"] }),
+      flight(1, { flightNumber: "B", dependencies: ["A"] }),
+      flight(2, { flightNumber: "D", operation: "arrival", dependencies: ["A"] }),
+    ]);
+    expect(snap.scheduled).toHaveLength(0);
+    const d = snap.unscheduled.find((e) => e.flight_number === "D")!;
+    expect(d.reason).toBe("dependency_unscheduled");
+    expect(d.blocking_flight_number).toBe("A");
+  });
+
+  it("cascades dependency_unscheduled to descendants of dependency_cancelled flights", () => {
+    // C is cancelled in the queue. B depends on C → dependency_cancelled.
+    // E depends on B → dependency_unscheduled blocking=B.
+    const cancelled: Flight = {
+      ...flight(0, { flightNumber: "C", operation: "arrival" }),
+      state: "cancelled",
+    };
+    const snap = pass([
+      cancelled,
+      flight(1, {
+        flightNumber: "B",
+        operation: "departure",
+        dependencies: ["C"],
+      }),
+      flight(2, {
+        flightNumber: "E",
+        operation: "arrival",
+        dependencies: ["B"],
+      }),
+    ]);
+    expect(snap.scheduled).toHaveLength(0);
+    const b = snap.unscheduled.find((e) => e.flight_number === "B")!;
+    const e = snap.unscheduled.find((x) => x.flight_number === "E")!;
+    expect(b.reason).toBe("dependency_cancelled");
+    expect(e.reason).toBe("dependency_unscheduled");
+    expect(e.blocking_flight_number).toBe("B");
+  });
+
+  it("flags dependency_cancelled when a predecessor is in state cancelled", () => {
+    const cancelled: Flight = {
+      ...flight(0, { flightNumber: "C", operation: "arrival" }),
+      state: "cancelled",
+    };
+    const snap = pass([
+      cancelled,
+      flight(1, {
+        flightNumber: "B",
+        operation: "departure",
+        dependencies: ["C"],
+      }),
+    ]);
+    expect(snap.scheduled).toHaveLength(0);
+    expect(snap.unscheduled).toHaveLength(1);
+    expect(snap.unscheduled[0]).toMatchObject({
+      flight_number: "B",
+      reason: "dependency_cancelled",
+      blocking_flight_number: "C",
+    });
+  });
+});
