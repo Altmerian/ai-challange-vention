@@ -8,7 +8,7 @@ Repo: [Altmerian/ai-challenge-vention](https://github.com/Altmerian/ai-challenge
 
 | # | Slice | Type | Blocked by | GH Issue | Status |
 |---|---|---|---|---|---|
-| 1 | Scaffold + `Config` + `reset_state` + stdio bootstrap | AFK | — | [#9](https://github.com/Altmerian/ai-challenge-vention/issues/9) | - [ ] |
+| 1 | Scaffold + `Config` + `reset_state` + stdio bootstrap | AFK | — | [#9](https://github.com/Altmerian/ai-challenge-vention/issues/9) | - [x] |
 | 2 | `submit_flight` + `atc://queue` | AFK | #9 | [#10](https://github.com/Altmerian/ai-challenge-vention/issues/10) | - [ ] |
 | 3 | `generate_schedule` MVP + `atc://runways` + `atc://timeline` + `TimezoneFormatter` + Morning Rush | AFK | #10 | [#11](https://github.com/Altmerian/ai-challenge-vention/issues/11) | - [ ] |
 | 4 | Dependencies in `Scheduler` + Connecting Flight | AFK | #11 | [#12](https://github.com/Altmerian/ai-challenge-vention/issues/12) | - [ ] |
@@ -34,14 +34,14 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 
 ### Slice 1 — Scaffold + `Config` + `reset_state` + stdio bootstrap · [#9](https://github.com/Altmerian/ai-challenge-vention/issues/9)
 
-- [ ] TypeScript strict project (Node ≥ 20 LTS) with `@modelcontextprotocol/sdk`, `zod`, `vitest`, `tsc` → `dist/`
-- [ ] `Config.parseFromEnv` parses all 12 `ATC_*` variables, collects every error, no partial-success state
-- [ ] Bootstrap exits non-zero on bad config and prints **all** errors at once
-- [ ] `AirportState` exposes `addFlight`, `cancelFlight`, `replaceSchedule`, `reset`; `reset()` sets `submission_index = 0`
-- [ ] Tool catalogue lists exactly `reset_state` at this stage
-- [ ] Server runs over `StdioServerTransport`; survives an `mcp-inspector --cli` session
-- [ ] Unit tests for `Config`: missing var, non-integer, out-of-range, invalid IANA tz, multi-error collection
-- [ ] Integration test (vitest + `InMemoryTransport`): start → list tools → call `reset_state`
+- [x] TypeScript strict project (Node ≥ 20 LTS) with `@modelcontextprotocol/sdk`, `zod`, `vitest`, `tsc` → `dist/`
+- [x] `Config.parseFromEnv` parses all 12 `ATC_*` variables, collects every error, no partial-success state
+- [x] Bootstrap exits non-zero on bad config and prints **all** errors at once
+- [x] `AirportState` exposes `addFlight`, `cancelFlight`, `replaceSchedule`, `reset`; `reset()` sets `submission_index = 0`
+- [x] Tool catalogue lists exactly `reset_state` at this stage
+- [x] Server runs over `StdioServerTransport`; survives an `mcp-inspector --cli` session
+- [x] Unit tests for `Config`: missing var, non-integer, out-of-range, invalid IANA tz, multi-error collection
+- [x] Integration test (vitest + `InMemoryTransport`): start → list tools → call `reset_state`
 
 ### Slice 2 — `submit_flight` + `atc://queue` · [#10](https://github.com/Altmerian/ai-challenge-vention/issues/10)
 
@@ -161,7 +161,20 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 
 ## Cross-slice lessons worth keeping
 
-_Populated as slices land. Anything that survived from slice to slice and is useful to someone extending the server later goes here — pitfalls of the MCP SDK, zod schema gotchas, deterministic-time test patterns, etc. Check and remove stale entries after each slice closes._
+### Persistent gotchas (from slice 1, still apply)
+
+- **Strict input for zero-arg / closed-shape tools.** `registerTool(..., { inputSchema: z.strictObject({...}) }, ...)` advertises `additionalProperties: false` on the wire — without it, unknown fields are silently accepted. Use this for every tool whose input is meant to be empty or strictly enumerated.
+- **IANA timezone validation = exact round-trip.** A bare `new Intl.DateTimeFormat("en-US", { timeZone })` constructor merely *parses* — it canonicalizes `europe/warsaw` to `Europe/Warsaw` without complaint. Required check: `Intl.DateTimeFormat("en-US", { timeZone: name }).resolvedOptions().timeZone === name`. Aliases the tz database preserves (e.g. `US/Eastern`) round-trip and are correctly accepted; case-folded inputs are rejected. Same helper is the single validator for both `ATC_DEFAULT_TIMEZONE` and the per-call `timezone` argument in later slices.
+- **Multi-error collection inside a single variable, not just across variables.** `ATC_RUNWAY_LENGTHS_M="0,foo,-1"` must produce three errors, not one. Pattern: iterate, `continue` on each bad entry, return `null` only once the whole loop is done. Slices that introduce other compound vars (separations table, etc.) should follow this shape.
+- **`exactOptionalPropertyTypes: true` is on.** When optional zod fields default-narrow to `T | undefined`, TypeScript will reject `{ field: undefined }` assignments. Use `field?: T` consistently — don't conflate "absent" with "explicitly undefined".
+- **Inspector CLI invocation pattern.** `mcp-inspector --cli -e KEY=VALUE ... -- node dist/index.js --method <method> [--tool-name ...] [--tool-arg key=val]`. The `--` is mandatory before `node`; env vars repeat `-e` per variable. Don't try to feed the server stdin manually.
+- **`dist/index.js` needs `chmod +x`** after each `tsc` build for the shebang to do anything useful — Node will run it either way, but the binary should stay executable for direct invocation in MCP-client configs.
+
+### Handoff to slice 2
+
+- **`Flight` and `ScheduleSnapshot` types in `task-4/server/src/airport-state.ts` are placeholders.** Slice 2 owns refining `Flight` to carry `operation` / `priority` / `dependencies` / `min_runway_length_m`, plus uniqueness checks (including against `cancelled`). `ScheduleSnapshot` stays `unknown` until slice 3.
+- **Rewrite the integration test that seeds via direct `state.addFlight`** (`tests/mcp-server.integration.test.ts` — "reports the pre-reset counts…") once `submit_flight` exists. Slice 1 had no other path; slice 2 should make the protocol-level seeding the default.
+- **`cancelFlight` stub currently throws** — slice 5 owns the auto-regen cascade. Slice 2 should leave it alone (and document the intentional throw in its own test if it tries `submit → cancel` flows).
 
 ## Sync convention
 
