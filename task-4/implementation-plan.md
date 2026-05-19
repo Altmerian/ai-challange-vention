@@ -10,7 +10,7 @@ Repo: [Altmerian/ai-challenge-vention](https://github.com/Altmerian/ai-challenge
 |---|---|---|---|---|---|
 | 1 | Scaffold + `Config` + `reset_state` + stdio bootstrap | AFK | — | [#9](https://github.com/Altmerian/ai-challenge-vention/issues/9) | - [x] |
 | 2 | `submit_flight` + `atc://queue` | AFK | #9 | [#10](https://github.com/Altmerian/ai-challenge-vention/issues/10) | - [x] |
-| 3 | `generate_schedule` MVP + `atc://runways` + `atc://timeline` + `TimezoneFormatter` + Morning Rush | AFK | #10 | [#11](https://github.com/Altmerian/ai-challenge-vention/issues/11) | - [ ] |
+| 3 | `generate_schedule` MVP + `atc://runways` + `atc://timeline` + `TimezoneFormatter` + Morning Rush | AFK | #10 | [#11](https://github.com/Altmerian/ai-challenge-vention/issues/11) | - [x] |
 | 4 | Dependencies in `Scheduler` + Connecting Flight | AFK | #11 | [#12](https://github.com/Altmerian/ai-challenge-vention/issues/12) | - [ ] |
 | 5 | `cancel_flight` with auto-regen cascade | AFK | #12 | [#13](https://github.com/Altmerian/ai-challenge-vention/issues/13) | - [ ] |
 | 6 | `get_airport_status` + Heavy Hauler | AFK | #11, #12 | [#14](https://github.com/Altmerian/ai-challenge-vention/issues/14) | - [ ] |
@@ -56,22 +56,22 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 
 ### Slice 3 — `generate_schedule` MVP + `atc://runways` + `atc://timeline` + `TimezoneFormatter` + Morning Rush · [#11](https://github.com/Altmerian/ai-challenge-vention/issues/11)
 
-- [ ] `Scheduler` is pure `(queue, config) → ScheduleSnapshot`; no I/O, no clock, no env access
-- [ ] Independent flights placed earliest-feasibly across compatible runways and any gate, with one crew unit
-- [ ] Runway compatibility = `min_runway_length_m ≤ runway.length_m` (only rule); gates are uniform
-- [ ] Separation buffers (takeoff / landing / mixed) + `Gate Turnaround` + `ATC_MAX_HORIZON_MIN` respected
-- [ ] Contested ordering = (priority desc, submission_index asc); no displacement, no inheritance
-- [ ] Unscheduled reasons exercised: `no_compatible_runway`, `horizon_exceeded`
-- [ ] `Completion Time` = gate release (arrivals) / runway release (departures); matches `end_offset_min` on each entry
-- [ ] `TimezoneFormatter` validates IANA tz; invalid → error envelope, **not** silent UTC fallback
-- [ ] `ScheduleEntry` carries integer-minute offsets, ISO-8601 in client tz, **and** explicit `runway_window` + `gate_window` per the PRD derivation rules (arrivals use runway then gate; departures use gate then runway)
-- [ ] `schedule_start_at` is **UTC** (per ADR-0002) — per-entry `start_at` / `end_at` are the client-tz render
-- [ ] `atc://runways` exposes `busy_minutes` **including trailing separation buffer**, plus `available_windows` and `next_available_at_offset_min` so clients can see availability, not only usage
-- [ ] `atc://timeline` flat chronological, sorted by `(start_offset_min, flight_number)`
-- [ ] Runway IDs auto-assigned `RWY-1…`; gate IDs auto-assigned `GATE-1…` by env-var position
-- [ ] Unit tests for `Scheduler`: single arrival, contested priority, no-compat runway, horizon exceeded, gate turnaround, separation buffer (each variant)
-- [ ] Unit tests for `TimezoneFormatter`: non-UTC zone, DST window, invalid IANA throws
-- [ ] **Morning Rush** brief scenario passes via `InMemoryTransport` and Inspector CLI walkthrough
+- [x] `Scheduler` is pure `(queue, config) → ScheduleSnapshot`; no I/O, no clock, no env access
+- [x] Independent flights placed earliest-feasibly across compatible runways and any gate, with one crew unit
+- [x] Runway compatibility = `min_runway_length_m ≤ runway.length_m` (only rule); gates are uniform
+- [x] Separation buffers (takeoff / landing / mixed) + `Gate Turnaround` + `ATC_MAX_HORIZON_MIN` respected
+- [x] Contested ordering = (priority desc, submission_index asc); no displacement, no inheritance
+- [x] Unscheduled reasons exercised: `no_compatible_runway`, `horizon_exceeded`
+- [x] `Completion Time` = gate release (arrivals) / runway release (departures); matches `end_offset_min` on each entry
+- [x] `TimezoneFormatter` validates IANA tz; invalid → error envelope, **not** silent UTC fallback
+- [x] `ScheduleEntry` carries integer-minute offsets, ISO-8601 in client tz, **and** explicit `runway_window` + `gate_window` per the PRD derivation rules (arrivals use runway then gate; departures use gate then runway)
+- [x] `schedule_start_at` is **UTC** (per ADR-0002) — per-entry `start_at` / `end_at` are the client-tz render
+- [x] `atc://runways` exposes `busy_minutes` **including trailing separation buffer**, plus `available_windows` and `next_available_at_offset_min` so clients can see availability, not only usage
+- [x] `atc://timeline` flat chronological, sorted by `(start_offset_min, flight_number)`
+- [x] Runway IDs auto-assigned `RWY-1…`; gate IDs auto-assigned `GATE-1…` by env-var position
+- [x] Unit tests for `Scheduler`: single arrival, contested priority, no-compat runway, horizon exceeded, gate turnaround, separation buffer (each variant)
+- [x] Unit tests for `TimezoneFormatter`: non-UTC zone, DST window, invalid IANA throws
+- [x] **Morning Rush** brief scenario passes via `InMemoryTransport` and Inspector CLI walkthrough
 
 ### Slice 4 — Dependencies in `Scheduler` + Connecting Flight · [#12](https://github.com/Altmerian/ai-challenge-vention/issues/12)
 
@@ -163,21 +163,30 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 
 > After closing a slice, record durable cross-slice patterns or footguns that future agents will hit *regardless of which slice they pick* under **Persistent gotchas**, and *only next-slice-actionable* deferrals or reuse-or-roll-your-own choices under **Handoff**. Delete superseded bullets — this is a glanceable view, not an audit log.
 
-### Persistent gotchas (from slices 1–2, still apply)
+### Persistent gotchas (from slices 1–3, still apply)
 
 - **Every new tool gets `z.strictObject(...)` as its `inputSchema`.** Plain `z.object` advertises `additionalProperties: true` and silently accepts unknown fields on the wire.
 - **`exactOptionalPropertyTypes: true` is on.** Don't assign `x: undefined` to optional output keys — conditionally spread (`...(x !== undefined ? { x } : {})`) so JSON serialization omits the key cleanly.
 - **Never hand-roll an error envelope — always go through `errorEnvelope()`.** It deliberately omits `structuredContent`: the SDK client validates `structuredContent` against the tool's *success* output schema whenever present, regardless of `isError`, and any error-shaped object trips the validator. Vitest doesn't expose this because it skips `listTools()` (which primes the validator cache); Inspector does.
 - **Two validation paths by design — don't harmonize.** The SDK auto-validates input against `inputSchema` and emits `isError: true` with text-formatted zod issues. `errorEnvelope` carries `{errors: ValidationIssue[]}` JSON for business-rule failures only. Routing schema errors through our envelope would require dropping `inputSchema` from `registerTool` and losing the strict-schema advertisement in `tools/list`. Catalogue accuracy beats envelope-format uniformity.
-- **Inspector CLI is one-shot per process.** For cross-call scenarios drive the freshly-built server via the SDK's `StdioClientTransport` from a Node script — see `.verification/slice-2-stdio-driver.mjs` for the pattern. Slice 8 collapses both paths into a single `npm run verify:inspector` command.
-- **All IANA timezone parsing goes through `isValidIanaTimezone` in `config.ts`.** `Intl.DateTimeFormat` silently canonicalizes case-folded names; the helper enforces the exact round-trip. Reuse it for the per-call `timezone` argument introduced in slice 3 — don't re-derive the check.
+- **Inspector CLI is one-shot per process.** For cross-call scenarios drive the freshly-built server via the SDK's `StdioClientTransport` from a Node script — see `.verification/slice-3-stdio-driver.mjs` for the current pattern. Slice 8 collapses both paths into a single `npm run verify:inspector` command.
+- **All IANA timezone parsing goes through `isValidIanaTimezone` in `config.ts`.** `Intl.DateTimeFormat` silently canonicalizes case-folded names (`Asia/Kolkata` → `Asia/Calcutta`); the helper enforces the exact round-trip. Reuse it from any per-call `timezone` argument — don't re-derive the check.
+- **`Scheduler` and `TimezoneFormatter` are pure — keep them clock-free and env-free.** `runSchedulingPass` takes `{ now, timezone }` as an explicit option; the handler injects `new Date()` and the resolved tz. Tests pin both to fixed values for deterministic assertions.
+- **Resources track *intervals*, not just `readyAt`.** Each runway / gate / crew unit stores a sorted busy-interval list; placement is gap-aware so a later-placed low-priority flight can legitimately slot *before* an already-placed high-priority flight in time (no displacement of the placed one). The earliest-feasible search advances `t` past resource conflicts via `nextFreeWindow`. Don't collapse to a single ready-time scalar or the gap-fill case fails (caught by Codex review D-1).
+- **`extendedRunwayBusy` must sort by inflated start, not raw start.** The left buffer is type-dependent (`separationFor(newOp, o.op)`), so sorting by `o.start` *before* inflation can let `nextFreeWindow`'s sorted-list precondition fail in principle. The current placement invariants make this unreachable, but the sort-by-inflated-start is the contract-correct choice.
+- **`atc://runways` last-op trailing buffer = `max(same-type sep, mixed sep)`.** The runway is "available again" only when *any* next op type would fit — that's the conservative answer. Don't switch to per-type publishing without revising the resource contract in PRD.
+- **`atc://runways[].operations` sort key is `start_offset_min`, NOT `runway_window.start_offset_min`.** The two coincide for arrivals but differ for departures (operation span starts at gate-claim, runway window starts at takeoff). The PRD pinned `start_offset_min`. The busy-minute math uses a separate working copy sorted by `runway_window.start_offset_min`.
+- **`generate_schedule.structuredContent.schedule` is fully zod-typed.** When you add `cancel_flight` (slice 5) or `get_airport_status` (slice 6), reuse `ScheduleSnapshotSchema` / `ScheduleEntrySchema` / `UnscheduledEntrySchema` from `mcp-server.ts` rather than re-deriving — the catalogue contract must be exact.
+- **`ValidationReason` taxonomy in `error-envelope.ts` is intentionally narrow** (`invalid_input` · `self_dependency` · `duplicate_flight_number`). Schedule-time taxonomy (`no_compatible_runway`, `horizon_exceeded`, `dependency_*`) lives on `UnscheduledEntry`, not in this envelope. Don't mix the two — the `invalid_input` reason is what `generate_schedule` returns for an unknown IANA timezone, not `no_compatible_runway`.
+- **`replaceSchedule(snapshot)` is the single state-mutation point after a pass.** It both installs the snapshot AND flips `Flight.state` in lockstep, then rebuilds the flight-number index. Adding a sibling setter that touches `Flight.state` independently would let queue state and schedule state drift; extend `replaceSchedule` instead.
 
-### Handoff to slice 3
+### Handoff to slice 4
 
-- **`ScheduleSnapshot` is still `unknown` in `airport-state.ts`.** Slice 3 owns refining it to the PRD `ScheduleSnapshot` shape (`generated_at`, `schedule_start_at` UTC, `timezone`, `horizon_min`, `scheduled[]`, `unscheduled[]`, `totals`) and wiring `Scheduler` through `replaceSchedule`. The current `cancelFlight` stub throws until slice 5 — slice 3 should not regenerate after submission; the schedule only refreshes on explicit `generate_schedule` per the PRD.
-- **`atc://queue` entries deliberately omit placement/reason fields.** Slice 3 extends the queue entry shape for *scheduled* flights (runway_id/gate_id/offsets) and slice 4 adds `blocking_flight_number` for `dependency_*` unscheduled reasons. The `toQueueEntry` helper in `mcp-server.ts` is the single place to extend — keep snake_case wire keys and the conditional-spread pattern for optionals.
-- **`Flight.state` is the source of truth for queue-entry state.** Slice 3 needs to flip flights between `submitted` / `scheduled` / `unscheduled` after each Scheduling Pass. Either expose a setter on `AirportState` or have `replaceSchedule` accept a richer payload and update the queue's `state` field in lockstep — pick one, don't split the responsibility.
-- **`ValidationReason` taxonomy in `error-envelope.ts` is intentionally narrow** (`invalid_input` · `self_dependency` · `duplicate_flight_number`). Schedule-time taxonomy (`no_compatible_runway`, `horizon_exceeded`, `dependency_*`) lives on `UnscheduledEntry`, not in this envelope. Don't mix the two.
+- **The Scheduler currently ignores `Flight.dependencies` entirely.** It treats every non-cancelled flight as a Ready Flight and places them by `(priority desc, submission_index asc)`. Slice 4 owns building the dependency DAG, running cycle detection, replacing the flat sort with a ready-heap loop, and emitting `dependency_cycle` / `dependency_missing` / `dependency_unscheduled` on `UnscheduledEntry`. Where to splice it: the eligibility loop in `runSchedulingPass` (`scheduler.ts`) and the `compareForPass` step — keep the gap-aware `projectPlacement` / `nextFreeWindow` machinery; it already handles the dependency_buffer waiting via `ATC_DEPENDENCY_BUFFER_MIN` once you push a dependent's earliest start to `max(predecessor.end) + buffer`.
+- **`UnscheduledEntry.blocking_flight_number` is already wired through to `atc://queue`.** `toQueueEntry` in `mcp-server.ts` conditionally spreads it when `entry.blocking_flight_number !== undefined`. Slice 4 just needs to populate it from the scheduler.
+- **`ScheduleEntry.predecessors` already echoes `Flight.dependencies`** — no further plumbing needed for the wire shape. Slice 4 only needs to make those edges affect placement order and `unscheduled` reasons.
+- **Inspector CLI driver pattern is established.** Copy `.verification/slice-3-stdio-driver.mjs` to `slice-4-stdio-driver.mjs` and add the Connecting Flight brief scenario (A → B with `dependencies: ["A"]`, assert B's `start_offset_min >= A.end_offset_min + ATC_DEPENDENCY_BUFFER_MIN`). The existing helpers (`withClient`, `parseEnvelopeErrors`, `noWindowOverlap`) drop in unchanged.
+- **`Flight.dependencies` is `readonly string[]`** (already de-duplicated, self-references stripped at submission). Slice 4 should not mutate it; build the DAG out of band.
 
 ## Sync convention
 

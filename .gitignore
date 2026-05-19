@@ -23,6 +23,11 @@ auth.json
 **/extraction/raw/**
 **/extraction/scripts/**
 
+# node / build artifacts
+**/node_modules/
+**/dist/
+**/.vite/
+
 # environment files
 .env
 .env.local

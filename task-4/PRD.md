@@ -57,7 +57,7 @@ The implementation is split between **deep** modules (small interface, large enc
 
 #### Deep modules
 
-- **`Scheduler`** — pure function `(queue: Flight[], config: Config) → ScheduleSnapshot`. Implements the greedy dependency-respecting algorithm: build dependency DAG → detect cycles → loop selecting the **Ready Flight** with `(priority desc, submission_index asc)` → find earliest feasible window across compatible runways and any gate (and any free crew unit) → place it. No I/O, no clock, no env access. The implementation pattern looks roughly like:
+- **`Scheduler`** — pure function `(queue: Flight[], config: Config) → ScheduleSnapshot`. Implements the greedy dependency-respecting algorithm: build dependency DAG → detect cycles → loop selecting the **Ready Flight** with `(priority desc, submission_index asc)` → find earliest feasible window across compatible runways and any gate (and any free crew unit) → place it. No I/O, no clock, no env access. Resource selection tiebreaks are: (a) earliest feasible `start_offset_min`, then (b) lowest runway index, then (c) lowest gate index. **Crew-unit selection is not part of the published tiebreak rule** — once a feasible `(runway, gate)` slot is chosen, the scheduler picks the smallest-index ground-crew unit whose existing reservations leave a gap fitting the gate_window. This keeps placement deterministic without exposing crew identity to the wire contract. The implementation pattern looks roughly like:
 
   ```ts
   // Decision shape only — not a complete implementation
@@ -112,8 +112,8 @@ The implementation is split between **deep** modules (small interface, large enc
 | URI | Content shape | Notes |
 | --- | --- | --- |
 | `atc://queue` | `{ flights: QueueEntry[] }` — every flight ever submitted, in submission order. Includes cancelled and unscheduled. Each entry carries: `flight_number`, `operation`, `priority`, `dependencies`, `min_runway_length_m?`, `state` (`submitted`/`scheduled`/`unscheduled`/`cancelled`), `submission_index`, plus the placement (if `scheduled`) or `reason`+`detail`+`blocking_flight_number?` (if `unscheduled`) | Reads current in-memory state; does not trigger recomputation. |
-| `atc://runways` | `{ runways: [{ runway_id, length_m, operations: ScheduleEntry[], busy_minutes, utilization_pct, available_windows: [{ start_offset_min, end_offset_min }], next_available_at_offset_min: integer \| null }] }` | Operations sorted by `start_offset_min`. `available_windows` are the gaps between operations (including trailing separation buffers) over `[0, horizon_min]`; `next_available_at_offset_min` is the start of the first such gap that begins at or after the current pass's t=0, or `null` if the runway is saturated for the horizon. |
-| `atc://timeline` | `{ operations: ScheduleEntry[] }` — flat chronological list across the whole airport, sorted by `start_offset_min` then `flight_number` | Runway-agnostic view. |
+| `atc://runways` | `{ runways: [{ runway_id, length_m, operations: ScheduleEntry[], busy_minutes, utilization_pct, available_windows: [{ start_offset_min, end_offset_min }], next_available_at_offset_min: integer \| null }] }` | Operations sorted by `start_offset_min`. `busy_minutes` sums `runway_window` durations plus every trailing separation buffer; for the **last** operation on a runway the trailing buffer is `max(separation_for(prev.operation, prev.operation), separation_for_mixed)` — the worst-case sep before any unknown next op (kept conservative so the published number remains safe regardless of which op type comes next). `utilization_pct` = `round(busy_minutes / horizon_min * 1000) / 10` (one decimal place). `available_windows` are the gaps between operations (including trailing separation buffers) over `[0, horizon_min]`; `next_available_at_offset_min` is the start of the first such gap that begins at or after the current pass's t=0, or `null` if the runway is saturated for the horizon. Before any `generate_schedule` call, every runway returns `operations: []`, `busy_minutes: 0`, and `available_windows: [{0, horizon_min}]`. |
+| `atc://timeline` | `{ operations: ScheduleEntry[] }` — flat chronological list across the whole airport, sorted by `start_offset_min` then `flight_number` | Runway-agnostic view. Before any `generate_schedule` call, returns `{ operations: [] }`. |
 
 ### Shared output shapes
 
@@ -129,7 +129,7 @@ The implementation is split between **deep** modules (small interface, large enc
   totals: { submitted, scheduled, unscheduled, cancelled }   // integer counts
 }
 ```
-The canonical t=0 anchor is **always UTC**. Client-zone rendering happens per-entry via `start_at` / `end_at` on each `ScheduleEntry` (and analogous fields elsewhere).
+The canonical t=0 anchor is **always UTC**. Client-zone rendering happens per-entry via `start_at` / `end_at` on each `ScheduleEntry` (and analogous fields elsewhere). `schedule_start_at` and `generated_at` are equal: the snapshot is built synchronously from the `now` captured at the start of the pass, truncated to minute precision. `totals` reports **current state counts** — after a pass, every non-cancelled flight is either `scheduled` or `unscheduled`, so `totals.submitted` is always 0 in any snapshot the scheduler emits. `flights.by_state` in `AirportStatus` reads the same counts off `AirportState.queue` and so will report `submitted: 0` once `generate_schedule` has run.
 
 **`ScheduleEntry`:**
 ```ts
@@ -179,7 +179,7 @@ The trailing **Separation Buffer** is enforced as a gap **between** consecutive 
   schedule_completion: { schedule_start_at, makespan_min, completion_at } | null
 }
 ```
-`schedule_start_at` and `completion_at` are **UTC ISO-8601 instants** (presentation in the client zone happens in tool responses that carry `timezone`, not here). `schedule_completion` is `null` iff `generate_schedule` has never run in this process; an all-unscheduled pass returns `{ schedule_start_at, makespan_min: 0, completion_at: schedule_start_at }`. Runway `busy_minutes` includes the trailing separation buffer (the runway is unavailable during it); gate `busy_minutes` is the sum of `gate_window` durations (no trailing buffer — gate turnaround already covers it). Ground crew is *not* in `resources` — the brief names only runways and gates.
+`schedule_start_at` and `completion_at` are **UTC ISO-8601 instants** (presentation in the client zone happens in tool responses that carry `timezone`, not here). `schedule_completion` is `null` iff `generate_schedule` has never run in this process; an all-unscheduled pass returns `{ schedule_start_at, makespan_min: 0, completion_at: schedule_start_at }`. Runway `busy_minutes` includes the trailing separation buffer (the runway is unavailable during it); the **last** op's trailing buffer is `max(same-type sep, mixed sep)` — the worst-case sep before any unknown next op, kept conservative so the published number stays safe regardless of next op type. Gate `busy_minutes` is the sum of `gate_window` durations (no trailing buffer — gate turnaround already covers it). Ground crew is *not* in `resources` — the brief names only runways and gates.
 
 **`BottleneckReport`:**
 ```ts

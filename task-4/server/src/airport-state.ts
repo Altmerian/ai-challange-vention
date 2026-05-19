@@ -8,6 +8,9 @@
  */
 
 import type { Config } from "./config.js";
+import type { ScheduleSnapshot } from "./scheduler.js";
+
+export type { ScheduleSnapshot } from "./scheduler.js";
 
 export type FlightOperation = "arrival" | "departure";
 export type FlightPriority = "high" | "medium" | "low";
@@ -37,11 +40,6 @@ export type Flight = Readonly<
     submissionIndex: number;
   }
 >;
-
-/**
- * Placeholder `ScheduleSnapshot` shape — refined in slice 3.
- */
-export type ScheduleSnapshot = unknown;
 
 export type ResetResult = Readonly<{
   flightsRemovedCount: number;
@@ -114,8 +112,31 @@ export class AirportState {
     throw new Error("AirportState.cancelFlight not implemented until slice 5");
   }
 
+  /**
+   * Installs a fresh `ScheduleSnapshot` as the current schedule and flips the
+   * `state` of every non-cancelled flight in the queue to `scheduled` or
+   * `unscheduled` based on which side of the snapshot they landed in.
+   *
+   * The slice-3 PRD wants `Flight.state` to be the single source of truth for
+   * queue-entry state. Doing the mutation here (instead of via a separate
+   * setter) keeps the schedule and the queue's state field consistent in one
+   * step so the two cannot drift apart.
+   */
   replaceSchedule(snapshot: ScheduleSnapshot): void {
     this.#schedule = snapshot;
+    const scheduledNumbers = new Set(snapshot.scheduled.map((e) => e.flight_number));
+    const unscheduledNumbers = new Set(snapshot.unscheduled.map((e) => e.flight_number));
+    this.#queue = this.#queue.map((f) => {
+      if (f.state === "cancelled") return f;
+      const nextState: FlightState = scheduledNumbers.has(f.flightNumber)
+        ? "scheduled"
+        : unscheduledNumbers.has(f.flightNumber)
+          ? "unscheduled"
+          : f.state;
+      return nextState === f.state ? f : { ...f, state: nextState };
+    });
+    this.#byFlightNumber.clear();
+    for (const f of this.#queue) this.#byFlightNumber.set(f.flightNumber, f);
   }
 
   /**

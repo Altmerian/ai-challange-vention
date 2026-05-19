@@ -76,24 +76,25 @@ async function readQueue(client: Client): Promise<{
   return JSON.parse(first.text) as { flights: Array<Record<string, unknown>> };
 }
 
-describe("MCP server — catalogues (slice 2)", () => {
-  it("advertises exactly submit_flight and reset_state", async () => {
+describe("MCP server — catalogues (slice 3)", () => {
+  it("advertises exactly generate_schedule, reset_state, and submit_flight", async () => {
     const { client, cleanup } = await connectClient();
     try {
       const { tools } = await client.listTools();
       const names = tools.map((t) => t.name).sort();
-      expect(names).toEqual(["reset_state", "submit_flight"]);
+      expect(names).toEqual(["generate_schedule", "reset_state", "submit_flight"]);
     } finally {
       await cleanup();
     }
   });
 
-  it("advertises exactly the atc://queue resource", async () => {
+  it("advertises exactly atc://queue, atc://runways, and atc://timeline", async () => {
     const { client, cleanup } = await connectClient();
     try {
       const { resources } = await client.listResources();
-      expect(resources.map((r) => r.uri)).toEqual(["atc://queue"]);
-      expect(resources[0]?.mimeType).toBe("application/json");
+      const uris = resources.map((r) => r.uri).sort();
+      expect(uris).toEqual(["atc://queue", "atc://runways", "atc://timeline"]);
+      for (const r of resources) expect(r.mimeType).toBe("application/json");
     } finally {
       await cleanup();
     }
@@ -426,6 +427,369 @@ describe("reset_state — flow with submit_flight", () => {
         arguments: { unexpected: 1 } as Record<string, unknown>,
       });
       expect(response.isError).toBe(true);
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+type ScheduleEntryShape = {
+  flight_number: string;
+  operation: "arrival" | "departure";
+  priority: "high" | "medium" | "low";
+  runway_id: string;
+  gate_id: string;
+  start_offset_min: number;
+  end_offset_min: number;
+  runway_window: { start_offset_min: number; end_offset_min: number };
+  gate_window: { start_offset_min: number; end_offset_min: number };
+  start_at: string;
+  end_at: string;
+  predecessors: string[];
+};
+
+type UnscheduledEntryShape = {
+  flight_number: string;
+  operation: "arrival" | "departure";
+  priority: "high" | "medium" | "low";
+  reason: string;
+  detail: string;
+  blocking_flight_number?: string;
+};
+
+type SnapshotShape = {
+  generated_at: string;
+  schedule_start_at: string;
+  timezone: string;
+  horizon_min: number;
+  scheduled: ScheduleEntryShape[];
+  unscheduled: UnscheduledEntryShape[];
+  totals: { submitted: number; scheduled: number; unscheduled: number; cancelled: number };
+};
+
+async function generateSchedule(
+  client: Client,
+  args: { timezone?: string } = {},
+): Promise<SnapshotShape> {
+  const resp = await client.callTool({ name: "generate_schedule", arguments: args });
+  if (resp.isError) {
+    throw new Error(
+      `generate_schedule returned isError: ${JSON.stringify(resp.content?.[0])}`,
+    );
+  }
+  const schedule = (resp.structuredContent as { schedule: SnapshotShape }).schedule;
+  return schedule;
+}
+
+async function readJson<T>(client: Client, uri: string): Promise<T> {
+  const resp = await client.readResource({ uri });
+  const text = resp.contents[0]?.text;
+  if (typeof text !== "string") throw new Error(`${uri} did not return text`);
+  return JSON.parse(text) as T;
+}
+
+function noWindowOverlap(
+  ops: ScheduleEntryShape[],
+  pick: (e: ScheduleEntryShape) => { start_offset_min: number; end_offset_min: number },
+  groupBy: (e: ScheduleEntryShape) => string,
+): boolean {
+  const byGroup = new Map<string, Array<{ start_offset_min: number; end_offset_min: number }>>();
+  for (const op of ops) {
+    const arr = byGroup.get(groupBy(op)) ?? [];
+    arr.push(pick(op));
+    byGroup.set(groupBy(op), arr);
+  }
+  for (const arr of byGroup.values()) {
+    arr.sort((a, b) => a.start_offset_min - b.start_offset_min);
+    for (let i = 1; i < arr.length; i++) {
+      if (arr[i]!.start_offset_min < arr[i - 1]!.end_offset_min) return false;
+    }
+  }
+  return true;
+}
+
+describe("generate_schedule", () => {
+  it("returns a ScheduleSnapshot with canonical offsets and ISO timestamps", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "AA100", operation: "arrival", priority: "high" },
+      });
+      const snap = await generateSchedule(client, { timezone: "Europe/Warsaw" });
+      expect(snap.timezone).toBe("Europe/Warsaw");
+      expect(snap.horizon_min).toBe(240);
+      expect(snap.schedule_start_at).toMatch(/Z$/);
+      expect(snap.generated_at).toMatch(/Z$/);
+      expect(snap.scheduled).toHaveLength(1);
+      const e = snap.scheduled[0]!;
+      expect(e.runway_id).toBe("RWY-1");
+      expect(e.gate_id).toBe("GATE-1");
+      expect(e.start_offset_min).toBe(0);
+      expect(e.runway_window).toEqual({ start_offset_min: 0, end_offset_min: 5 });
+      expect(e.gate_window).toEqual({ start_offset_min: 5, end_offset_min: 35 });
+      expect(e.start_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
+      expect(e.predecessors).toEqual([]);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("falls back to ATC_DEFAULT_TIMEZONE when timezone is omitted", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "AA100", operation: "arrival", priority: "high" },
+      });
+      const snap = await generateSchedule(client);
+      expect(snap.timezone).toBe("UTC");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("returns an error envelope for an invalid IANA timezone (no silent UTC fallback)", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      const resp = await client.callTool({
+        name: "generate_schedule",
+        arguments: { timezone: "Mars/Olympus" },
+      });
+      expect(resp.isError).toBe(true);
+      const errors = parseEnvelopeErrors(resp);
+      expect(errors[0]?.reason).toBe("invalid_input");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("flips queue state to scheduled / unscheduled after a pass", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "OK1", operation: "arrival", priority: "medium" },
+      });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: {
+          flight_number: "HVY1",
+          operation: "departure",
+          priority: "high",
+          min_runway_length_m: 9999,
+        },
+      });
+      await generateSchedule(client);
+      const queue = await readJson<{ flights: Array<Record<string, unknown>> }>(
+        client,
+        "atc://queue",
+      );
+      const byNumber = new Map(queue.flights.map((f) => [f.flight_number as string, f]));
+      expect(byNumber.get("OK1")?.state).toBe("scheduled");
+      expect(byNumber.get("OK1")?.runway_id).toBe("RWY-1");
+      expect(byNumber.get("HVY1")?.state).toBe("unscheduled");
+      expect(byNumber.get("HVY1")?.reason).toBe("no_compatible_runway");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("produces non-overlapping runway and gate windows for a mixed independent batch", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      const submissions = [
+        { flight_number: "A1", operation: "arrival" as const, priority: "high" as const },
+        { flight_number: "B1", operation: "departure" as const, priority: "medium" as const },
+        { flight_number: "A2", operation: "arrival" as const, priority: "low" as const },
+        { flight_number: "B2", operation: "departure" as const, priority: "low" as const },
+      ];
+      for (const s of submissions) {
+        await client.callTool({ name: "submit_flight", arguments: s });
+      }
+      const snap = await generateSchedule(client);
+      expect(snap.scheduled).toHaveLength(4);
+      expect(noWindowOverlap(snap.scheduled, (e) => e.runway_window, (e) => e.runway_id)).toBe(
+        true,
+      );
+      expect(noWindowOverlap(snap.scheduled, (e) => e.gate_window, (e) => e.gate_id)).toBe(
+        true,
+      );
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+describe("atc://runways resource", () => {
+  it("exposes per-runway operations, busy minutes (incl. trailing buffer), and available windows", async () => {
+    // Single runway forces both arrivals onto RWY-1 so busy-minute math is deterministic.
+    const state = new AirportState({ ...makeConfig(), runwayLengthsM: [3000] });
+    const server = createMcpServer(state);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client(
+      { name: "atc-test-client", version: "0.0.0" },
+      { capabilities: {} },
+    );
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "A1", operation: "arrival", priority: "high" },
+      });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "A2", operation: "arrival", priority: "low" },
+      });
+      await generateSchedule(client);
+      const body = await readJson<{ runways: Array<Record<string, unknown>> }>(
+        client,
+        "atc://runways",
+      );
+      expect(body.runways).toHaveLength(1);
+      const rwy1 = body.runways[0]!;
+      expect(rwy1.runway_id).toBe("RWY-1");
+      expect(rwy1.length_m).toBe(3000);
+      const ops = rwy1.operations as ScheduleEntryShape[];
+      expect(ops.map((o) => o.flight_number)).toEqual(["A1", "A2"]);
+      // A1 runway [0,5] + sep 2 (landing→landing), A2 runway [7,12] + trailing
+      // buffer = max(separation_landing=2, separation_mixed=3) = 3.
+      // busy = 5 + 2 + 5 + 3 = 15.
+      expect(rwy1.busy_minutes).toBe(15);
+      const wins = rwy1.available_windows as Array<{
+        start_offset_min: number;
+        end_offset_min: number;
+      }>;
+      expect(wins).toEqual([{ start_offset_min: 15, end_offset_min: 240 }]);
+      expect(rwy1.next_available_at_offset_min).toBe(15);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("reads do not recompute (byte-identical payload on repeat)", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "A1", operation: "arrival", priority: "high" },
+      });
+      await generateSchedule(client);
+      const r1 = await client.readResource({ uri: "atc://runways" });
+      const r2 = await client.readResource({ uri: "atc://runways" });
+      expect(r1.contents[0]?.text).toBe(r2.contents[0]?.text);
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+describe("atc://timeline resource", () => {
+  it("returns a flat chronological list of scheduled operations", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "A1", operation: "arrival", priority: "high" },
+      });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "B1", operation: "departure", priority: "medium" },
+      });
+      await generateSchedule(client);
+      const body = await readJson<{ operations: ScheduleEntryShape[] }>(
+        client,
+        "atc://timeline",
+      );
+      expect(body.operations.length).toBeGreaterThanOrEqual(2);
+      for (let i = 1; i < body.operations.length; i++) {
+        const a = body.operations[i - 1]!;
+        const b = body.operations[i]!;
+        expect(
+          a.start_offset_min < b.start_offset_min ||
+            (a.start_offset_min === b.start_offset_min && a.flight_number <= b.flight_number),
+        ).toBe(true);
+      }
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("returns an empty operations list when no schedule has been generated", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      const body = await readJson<{ operations: ScheduleEntryShape[] }>(
+        client,
+        "atc://timeline",
+      );
+      expect(body.operations).toEqual([]);
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+describe("brief scenario — Morning Rush", () => {
+  it("schedules four mixed-priority flights without runway/gate overlap; higher priority placed earlier when contested", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      // 1. Clean state.
+      const r = await client.callTool({ name: "reset_state", arguments: {} });
+      expect(r.isError).toBeFalsy();
+
+      // 2. Submit four mixed flights.
+      const subs = [
+        { flight_number: "HA1", operation: "arrival" as const, priority: "high" as const },
+        { flight_number: "MD1", operation: "departure" as const, priority: "medium" as const },
+        { flight_number: "LA1", operation: "arrival" as const, priority: "low" as const },
+        { flight_number: "LD1", operation: "departure" as const, priority: "low" as const },
+      ];
+      for (const s of subs) {
+        const resp = await client.callTool({ name: "submit_flight", arguments: s });
+        expect(resp.isError).toBeFalsy();
+      }
+
+      // 3. Generate the schedule.
+      const snap = await generateSchedule(client);
+      expect(snap.scheduled).toHaveLength(4);
+      expect(snap.unscheduled).toHaveLength(0);
+
+      // 4. Inspect the queue — every submission visible, all scheduled, with placements.
+      const queue = await readJson<{ flights: Array<Record<string, unknown>> }>(
+        client,
+        "atc://queue",
+      );
+      expect(queue.flights).toHaveLength(4);
+      for (const f of queue.flights) {
+        expect(f.state).toBe("scheduled");
+        expect(f.runway_id).toBeTypeOf("string");
+        expect(f.gate_id).toBeTypeOf("string");
+      }
+
+      // 5. Inspect the timeline.
+      const timeline = await readJson<{ operations: ScheduleEntryShape[] }>(
+        client,
+        "atc://timeline",
+      );
+
+      // Assert: no runway/gate window overlap on the timeline.
+      expect(
+        noWindowOverlap(timeline.operations, (e) => e.runway_window, (e) => e.runway_id),
+      ).toBe(true);
+      expect(
+        noWindowOverlap(timeline.operations, (e) => e.gate_window, (e) => e.gate_id),
+      ).toBe(true);
+
+      // Higher priority placed earlier when contested: HA1 (high) starts no later than LA1 (low).
+      const byNumber = new Map(timeline.operations.map((o) => [o.flight_number, o]));
+      const ha1 = byNumber.get("HA1")!;
+      const la1 = byNumber.get("LA1")!;
+      expect(ha1.start_offset_min).toBeLessThanOrEqual(la1.start_offset_min);
+      // Medium beats low at submission tiebreak: MD1 (medium) earlier than LD1 (low).
+      const md1 = byNumber.get("MD1")!;
+      const ld1 = byNumber.get("LD1")!;
+      expect(md1.start_offset_min).toBeLessThanOrEqual(ld1.start_offset_min);
     } finally {
       await cleanup();
     }

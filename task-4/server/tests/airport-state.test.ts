@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { AirportState } from "../src/airport-state.js";
+import { AirportState, type ScheduleSnapshot } from "../src/airport-state.js";
 import type { Config } from "../src/config.js";
+
+const EMPTY_SNAPSHOT: ScheduleSnapshot = {
+  generated_at: "2026-05-19T10:00:00Z",
+  schedule_start_at: "2026-05-19T10:00:00Z",
+  timezone: "UTC",
+  horizon_min: 240,
+  scheduled: [],
+  unscheduled: [],
+  totals: { submitted: 0, scheduled: 0, unscheduled: 0, cancelled: 0 },
+};
 
 function makeState(): AirportState {
   const cfg: Config = {
@@ -111,7 +121,7 @@ describe("AirportState.reset", () => {
       priority: "low",
       dependencies: [],
     });
-    state.replaceSchedule({ placeholder: true });
+    state.replaceSchedule(EMPTY_SNAPSHOT);
 
     const r1 = state.reset();
     expect(r1).toEqual({ flightsRemovedCount: 2, scheduleCleared: true });

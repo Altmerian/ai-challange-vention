@@ -1,15 +1,28 @@
 /**
  * Constructs the MCP server surface — registers tools and resources against an
- * `AirportState`. Slice 2 adds `submit_flight` and the `atc://queue` resource.
- * Later slices extend this file with `generate_schedule`, `cancel_flight`,
- * `get_airport_status`, `analyze_bottleneck`, and the two remaining resources.
+ * `AirportState`. Slice 3 adds `generate_schedule`, the `atc://runways` and
+ * `atc://timeline` resources, extends `atc://queue` with placement/reason data,
+ * and wires the deep `Scheduler` + `TimezoneFormatter` modules in. Later slices
+ * add `cancel_flight`, `get_airport_status`, and `analyze_bottleneck`.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import type { AirportState, Flight } from "./airport-state.js";
+import {
+  type AirportState,
+  type Flight,
+  type ScheduleSnapshot,
+} from "./airport-state.js";
 import { errorEnvelope, type ValidationIssue } from "./error-envelope.js";
+import { isValidIanaTimezone } from "./config.js";
+import {
+  runSchedulingPass,
+  separationFor,
+  type ResourceWindow,
+  type ScheduleEntry,
+  type UnscheduledEntry,
+} from "./scheduler.js";
 
 export const SERVER_INFO = {
   name: "atc-mcp-server",
@@ -39,7 +52,68 @@ const SubmitFlightOutputShape = {
   submission_index: z.number().int().nonnegative(),
 } as const;
 
+const GenerateScheduleInputSchema = z.strictObject({
+  timezone: z.string().min(1).optional(),
+});
+
+const ResourceWindowSchema = z.object({
+  start_offset_min: z.number().int().nonnegative(),
+  end_offset_min: z.number().int().nonnegative(),
+});
+
+const ScheduleEntrySchema = z.object({
+  flight_number: z.string(),
+  operation: z.enum(["arrival", "departure"]),
+  priority: z.enum(["high", "medium", "low"]),
+  runway_id: z.string(),
+  gate_id: z.string(),
+  start_offset_min: z.number().int().nonnegative(),
+  end_offset_min: z.number().int().nonnegative(),
+  runway_window: ResourceWindowSchema,
+  gate_window: ResourceWindowSchema,
+  start_at: z.string(),
+  end_at: z.string(),
+  predecessors: z.array(z.string()),
+});
+
+const UnscheduledEntrySchema = z.object({
+  flight_number: z.string(),
+  operation: z.enum(["arrival", "departure"]),
+  priority: z.enum(["high", "medium", "low"]),
+  reason: z.enum([
+    "no_compatible_runway",
+    "horizon_exceeded",
+    "dependency_cycle",
+    "dependency_missing",
+    "dependency_cancelled",
+    "dependency_unscheduled",
+  ]),
+  detail: z.string(),
+  blocking_flight_number: z.string().optional(),
+});
+
+const ScheduleSnapshotSchema = z.object({
+  generated_at: z.string(),
+  schedule_start_at: z.string(),
+  timezone: z.string(),
+  horizon_min: z.number().int().nonnegative(),
+  scheduled: z.array(ScheduleEntrySchema),
+  unscheduled: z.array(UnscheduledEntrySchema),
+  totals: z.object({
+    submitted: z.number().int().nonnegative(),
+    scheduled: z.number().int().nonnegative(),
+    unscheduled: z.number().int().nonnegative(),
+    cancelled: z.number().int().nonnegative(),
+  }),
+});
+
+const GenerateScheduleOutputShape = {
+  schedule: ScheduleSnapshotSchema,
+} as const;
+
 const QUEUE_URI = "atc://queue";
+const RUNWAYS_URI = "atc://runways";
+const TIMELINE_URI = "atc://timeline";
 
 export function createMcpServer(state: AirportState): McpServer {
   const server = new McpServer(SERVER_INFO, {
@@ -152,6 +226,40 @@ export function createMcpServer(state: AirportState): McpServer {
     },
   );
 
+  server.registerTool(
+    "generate_schedule",
+    {
+      title: "Generate the airport schedule",
+      description:
+        "Replace the current schedule with a freshly computed one based on the current flight queue and configuration. " +
+        "Optionally accepts an IANA `timezone` that drives `start_at` / `end_at` rendering on schedule entries; the underlying offsets are timezone-free.",
+      inputSchema: GenerateScheduleInputSchema,
+      outputSchema: GenerateScheduleOutputShape,
+    },
+    async (args) => {
+      const timezone = args.timezone ?? state.config.defaultTimezone;
+      if (!isValidIanaTimezone(timezone)) {
+        return errorEnvelope([
+          {
+            reason: "invalid_input",
+            message: `unknown IANA timezone "${timezone}"`,
+            field: "timezone",
+          },
+        ]);
+      }
+      const snapshot = runSchedulingPass(state.queue, state.config, {
+        now: new Date(),
+        timezone,
+      });
+      state.replaceSchedule(snapshot);
+      const structuredContent = { schedule: snapshot };
+      return {
+        structuredContent,
+        content: [{ type: "text", text: JSON.stringify(structuredContent) }],
+      };
+    },
+  );
+
   server.registerResource(
     "queue",
     QUEUE_URI,
@@ -162,7 +270,12 @@ export function createMcpServer(state: AirportState): McpServer {
       mimeType: "application/json",
     },
     async (uri) => {
-      const body = { flights: state.queue.map(toQueueEntry) };
+      const snapshot = state.schedule;
+      const scheduledMap = buildScheduledIndex(snapshot);
+      const unscheduledMap = buildUnscheduledIndex(snapshot);
+      const body = {
+        flights: state.queue.map((f) => toQueueEntry(f, scheduledMap, unscheduledMap)),
+      };
       return {
         contents: [
           {
@@ -175,11 +288,82 @@ export function createMcpServer(state: AirportState): McpServer {
     },
   );
 
+  server.registerResource(
+    "runways",
+    RUNWAYS_URI,
+    {
+      title: "Runway availability and usage",
+      description:
+        "Per-runway scheduled operations, busy minutes (including trailing separation buffer), utilization, and available windows within [0, horizon].",
+      mimeType: "application/json",
+    },
+    async (uri) => {
+      const body = buildRunwaysResource(state);
+      return {
+        contents: [
+          {
+            uri: uri.toString(),
+            mimeType: "application/json",
+            text: JSON.stringify(body),
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerResource(
+    "timeline",
+    TIMELINE_URI,
+    {
+      title: "Operation timeline",
+      description:
+        "Flat chronological list of every scheduled operation across the airport, sorted by start_offset_min then flight_number.",
+      mimeType: "application/json",
+    },
+    async (uri) => {
+      const snapshot = state.schedule;
+      const operations: ScheduleEntry[] = snapshot ? [...snapshot.scheduled] : [];
+      // `snapshot.scheduled` is already sorted by (start_offset_min, flight_number);
+      // copying it preserves that order and shields the resource view from mutation.
+      return {
+        contents: [
+          {
+            uri: uri.toString(),
+            mimeType: "application/json",
+            text: JSON.stringify({ operations }),
+          },
+        ],
+      };
+    },
+  );
+
   return server;
 }
 
-function toQueueEntry(flight: Flight): Record<string, unknown> {
-  return {
+function buildScheduledIndex(
+  snapshot: ScheduleSnapshot | null,
+): Map<string, ScheduleEntry> {
+  const m = new Map<string, ScheduleEntry>();
+  if (!snapshot) return m;
+  for (const e of snapshot.scheduled) m.set(e.flight_number, e);
+  return m;
+}
+
+function buildUnscheduledIndex(
+  snapshot: ScheduleSnapshot | null,
+): Map<string, UnscheduledEntry> {
+  const m = new Map<string, UnscheduledEntry>();
+  if (!snapshot) return m;
+  for (const e of snapshot.unscheduled) m.set(e.flight_number, e);
+  return m;
+}
+
+function toQueueEntry(
+  flight: Flight,
+  scheduledByNumber: Map<string, ScheduleEntry>,
+  unscheduledByNumber: Map<string, UnscheduledEntry>,
+): Record<string, unknown> {
+  const base: Record<string, unknown> = {
     flight_number: flight.flightNumber,
     operation: flight.operation,
     priority: flight.priority,
@@ -190,4 +374,121 @@ function toQueueEntry(flight: Flight): Record<string, unknown> {
       ? { min_runway_length_m: flight.minRunwayLengthM }
       : {}),
   };
+  if (flight.state === "scheduled") {
+    const entry = scheduledByNumber.get(flight.flightNumber);
+    if (entry !== undefined) {
+      base.runway_id = entry.runway_id;
+      base.gate_id = entry.gate_id;
+      base.start_offset_min = entry.start_offset_min;
+      base.end_offset_min = entry.end_offset_min;
+      base.runway_window = entry.runway_window;
+      base.gate_window = entry.gate_window;
+      base.start_at = entry.start_at;
+      base.end_at = entry.end_at;
+    }
+  } else if (flight.state === "unscheduled") {
+    const entry = unscheduledByNumber.get(flight.flightNumber);
+    if (entry !== undefined) {
+      base.reason = entry.reason;
+      base.detail = entry.detail;
+      if (entry.blocking_flight_number !== undefined) {
+        base.blocking_flight_number = entry.blocking_flight_number;
+      }
+    }
+  }
+  return base;
+}
+
+type RunwayResource = Readonly<{
+  runway_id: string;
+  length_m: number;
+  operations: ScheduleEntry[];
+  busy_minutes: number;
+  utilization_pct: number;
+  available_windows: ResourceWindow[];
+  next_available_at_offset_min: number | null;
+}>;
+
+function buildRunwaysResource(state: AirportState): { runways: RunwayResource[] } {
+  const snapshot = state.schedule;
+  const horizon = snapshot?.horizon_min ?? state.config.maxHorizonMin;
+  const runways: RunwayResource[] = state.config.runwayLengthsM.map((length_m, i) => {
+    const id = `RWY-${i + 1}`;
+    const operations = snapshot
+      ? snapshot.scheduled.filter((e) => e.runway_id === id).slice()
+      : [];
+    // Resource contract: operations are sorted by `start_offset_min` per the PRD
+    // (`atc://runways` row). The separation-buffer math below reads them by
+    // `runway_window` order, which equals `start_offset_min` order for arrivals
+    // and could in principle differ for departures — but on a given runway, the
+    // greedy scheduler emits non-overlapping runway_windows so both orderings
+    // coincide here. We still sort `operations` by `start_offset_min` for the
+    // published view and re-sort a separate working copy by runway_window for
+    // the math, keeping the wire contract independent of the calculation.
+    operations.sort(
+      (a, b) =>
+        a.start_offset_min - b.start_offset_min ||
+        compareFlightNumberStr(a.flight_number, b.flight_number),
+    );
+    const byRunwayWindow = operations
+      .slice()
+      .sort(
+        (a, b) => a.runway_window.start_offset_min - b.runway_window.start_offset_min,
+      );
+
+    let busyMinutes = 0;
+    for (let j = 0; j < byRunwayWindow.length; j++) {
+      const op = byRunwayWindow[j]!;
+      busyMinutes += op.runway_window.end_offset_min - op.runway_window.start_offset_min;
+      const nextOp = j + 1 < byRunwayWindow.length ? byRunwayWindow[j + 1]! : null;
+      busyMinutes += separationFor(op.operation, nextOp?.operation ?? null, state.config);
+    }
+    const utilizationPct =
+      horizon > 0 ? Math.round((busyMinutes / horizon) * 1000) / 10 : 0;
+
+    const availableWindows = computeAvailableWindows(byRunwayWindow, horizon, state.config);
+    const nextAvailable =
+      availableWindows.length > 0 ? availableWindows[0]!.start_offset_min : null;
+
+    return {
+      runway_id: id,
+      length_m,
+      operations,
+      busy_minutes: busyMinutes,
+      utilization_pct: utilizationPct,
+      available_windows: availableWindows,
+      next_available_at_offset_min: nextAvailable,
+    };
+  });
+  return { runways };
+}
+
+function compareFlightNumberStr(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function computeAvailableWindows(
+  operations: readonly ScheduleEntry[],
+  horizon: number,
+  config: AirportState["config"],
+): ResourceWindow[] {
+  const windows: ResourceWindow[] = [];
+  let cursor = 0;
+  for (let j = 0; j < operations.length; j++) {
+    const op = operations[j]!;
+    if (op.runway_window.start_offset_min > cursor) {
+      const winEnd = Math.min(op.runway_window.start_offset_min, horizon);
+      if (winEnd > cursor) {
+        windows.push({ start_offset_min: cursor, end_offset_min: winEnd });
+      }
+    }
+    const nextOp = j + 1 < operations.length ? operations[j + 1]! : null;
+    const sep = separationFor(op.operation, nextOp?.operation ?? null, config);
+    cursor = Math.max(cursor, op.runway_window.end_offset_min + sep);
+    if (cursor >= horizon) break;
+  }
+  if (cursor < horizon) {
+    windows.push({ start_offset_min: cursor, end_offset_min: horizon });
+  }
+  return windows;
 }
