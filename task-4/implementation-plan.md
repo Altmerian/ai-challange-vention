@@ -9,7 +9,7 @@ Repo: [Altmerian/ai-challenge-vention](https://github.com/Altmerian/ai-challenge
 | # | Slice | Type | Blocked by | GH Issue | Status |
 |---|---|---|---|---|---|
 | 1 | Scaffold + `Config` + `reset_state` + stdio bootstrap | AFK | — | [#9](https://github.com/Altmerian/ai-challenge-vention/issues/9) | - [x] |
-| 2 | `submit_flight` + `atc://queue` | AFK | #9 | [#10](https://github.com/Altmerian/ai-challenge-vention/issues/10) | - [ ] |
+| 2 | `submit_flight` + `atc://queue` | AFK | #9 | [#10](https://github.com/Altmerian/ai-challenge-vention/issues/10) | - [x] |
 | 3 | `generate_schedule` MVP + `atc://runways` + `atc://timeline` + `TimezoneFormatter` + Morning Rush | AFK | #10 | [#11](https://github.com/Altmerian/ai-challenge-vention/issues/11) | - [ ] |
 | 4 | Dependencies in `Scheduler` + Connecting Flight | AFK | #11 | [#12](https://github.com/Altmerian/ai-challenge-vention/issues/12) | - [ ] |
 | 5 | `cancel_flight` with auto-regen cascade | AFK | #12 | [#13](https://github.com/Altmerian/ai-challenge-vention/issues/13) | - [ ] |
@@ -45,14 +45,14 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 
 ### Slice 2 — `submit_flight` + `atc://queue` · [#10](https://github.com/Altmerian/ai-challenge-vention/issues/10)
 
-- [ ] `submit_flight` validates input via `zod`, returns `{ accepted: true, flight_number, submission_index }`
-- [ ] Duplicate `flight_number` rejected — including against `cancelled` flights (uniqueness forever)
-- [ ] Self-dependency rejected at submission with reason `self_dependency`
-- [ ] Forward references (depending on a not-yet-submitted predecessor) accepted as-is (ADR-0004)
-- [ ] `ErrorEnvelope` collects multiple validation issues into one envelope (test with ≥2 violations)
-- [ ] `atc://queue` returns `{ flights: QueueEntry[] }` in submission order; reads do **not** recompute
-- [ ] `reset_state` returns non-zero `flights_removed_count` after submissions; next `submission_index` is 0
-- [ ] Integration tests: success, duplicate, self-dep, forward-ref, queue shape, multi-error envelope
+- [x] `submit_flight` validates input via `zod`, returns `{ accepted: true, flight_number, submission_index }`
+- [x] Duplicate `flight_number` rejected — including against `cancelled` flights (uniqueness forever)
+- [x] Self-dependency rejected at submission with reason `self_dependency`
+- [x] Forward references (depending on a not-yet-submitted predecessor) accepted as-is (ADR-0004)
+- [x] `ErrorEnvelope` collects multiple validation issues into one envelope (test with ≥2 violations)
+- [x] `atc://queue` returns `{ flights: QueueEntry[] }` in submission order; reads do **not** recompute
+- [x] `reset_state` returns non-zero `flights_removed_count` after submissions; next `submission_index` is 0
+- [x] Integration tests: success, duplicate, self-dep, forward-ref, queue shape, multi-error envelope
 
 ### Slice 3 — `generate_schedule` MVP + `atc://runways` + `atc://timeline` + `TimezoneFormatter` + Morning Rush · [#11](https://github.com/Altmerian/ai-challenge-vention/issues/11)
 
@@ -161,20 +161,23 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 
 ## Cross-slice lessons worth keeping
 
-### Persistent gotchas (from slice 1, still apply)
+> After closing a slice, record durable cross-slice patterns or footguns that future agents will hit *regardless of which slice they pick* under **Persistent gotchas**, and *only next-slice-actionable* deferrals or reuse-or-roll-your-own choices under **Handoff**. Delete superseded bullets — this is a glanceable view, not an audit log.
 
-- **Strict input for zero-arg / closed-shape tools.** `registerTool(..., { inputSchema: z.strictObject({...}) }, ...)` advertises `additionalProperties: false` on the wire — without it, unknown fields are silently accepted. Use this for every tool whose input is meant to be empty or strictly enumerated.
-- **IANA timezone validation = exact round-trip.** A bare `new Intl.DateTimeFormat("en-US", { timeZone })` constructor merely *parses* — it canonicalizes `europe/warsaw` to `Europe/Warsaw` without complaint. Required check: `Intl.DateTimeFormat("en-US", { timeZone: name }).resolvedOptions().timeZone === name`. Aliases the tz database preserves (e.g. `US/Eastern`) round-trip and are correctly accepted; case-folded inputs are rejected. Same helper is the single validator for both `ATC_DEFAULT_TIMEZONE` and the per-call `timezone` argument in later slices.
-- **Multi-error collection inside a single variable, not just across variables.** `ATC_RUNWAY_LENGTHS_M="0,foo,-1"` must produce three errors, not one. Pattern: iterate, `continue` on each bad entry, return `null` only once the whole loop is done. Slices that introduce other compound vars (separations table, etc.) should follow this shape.
-- **`exactOptionalPropertyTypes: true` is on.** When optional zod fields default-narrow to `T | undefined`, TypeScript will reject `{ field: undefined }` assignments. Use `field?: T` consistently — don't conflate "absent" with "explicitly undefined".
-- **Inspector CLI invocation pattern.** `mcp-inspector --cli -e KEY=VALUE ... -- node dist/index.js --method <method> [--tool-name ...] [--tool-arg key=val]`. The `--` is mandatory before `node`; env vars repeat `-e` per variable. Don't try to feed the server stdin manually.
-- **`dist/index.js` needs `chmod +x`** after each `tsc` build for the shebang to do anything useful — Node will run it either way, but the binary should stay executable for direct invocation in MCP-client configs.
+### Persistent gotchas (from slices 1–2, still apply)
 
-### Handoff to slice 2
+- **Every new tool gets `z.strictObject(...)` as its `inputSchema`.** Plain `z.object` advertises `additionalProperties: true` and silently accepts unknown fields on the wire.
+- **`exactOptionalPropertyTypes: true` is on.** Don't assign `x: undefined` to optional output keys — conditionally spread (`...(x !== undefined ? { x } : {})`) so JSON serialization omits the key cleanly.
+- **Never hand-roll an error envelope — always go through `errorEnvelope()`.** It deliberately omits `structuredContent`: the SDK client validates `structuredContent` against the tool's *success* output schema whenever present, regardless of `isError`, and any error-shaped object trips the validator. Vitest doesn't expose this because it skips `listTools()` (which primes the validator cache); Inspector does.
+- **Two validation paths by design — don't harmonize.** The SDK auto-validates input against `inputSchema` and emits `isError: true` with text-formatted zod issues. `errorEnvelope` carries `{errors: ValidationIssue[]}` JSON for business-rule failures only. Routing schema errors through our envelope would require dropping `inputSchema` from `registerTool` and losing the strict-schema advertisement in `tools/list`. Catalogue accuracy beats envelope-format uniformity.
+- **Inspector CLI is one-shot per process.** For cross-call scenarios drive the freshly-built server via the SDK's `StdioClientTransport` from a Node script — see `.verification/slice-2-stdio-driver.mjs` for the pattern. Slice 8 collapses both paths into a single `npm run verify:inspector` command.
+- **All IANA timezone parsing goes through `isValidIanaTimezone` in `config.ts`.** `Intl.DateTimeFormat` silently canonicalizes case-folded names; the helper enforces the exact round-trip. Reuse it for the per-call `timezone` argument introduced in slice 3 — don't re-derive the check.
 
-- **`Flight` and `ScheduleSnapshot` types in `task-4/server/src/airport-state.ts` are placeholders.** Slice 2 owns refining `Flight` to carry `operation` / `priority` / `dependencies` / `min_runway_length_m`, plus uniqueness checks (including against `cancelled`). `ScheduleSnapshot` stays `unknown` until slice 3.
-- **Rewrite the integration test that seeds via direct `state.addFlight`** (`tests/mcp-server.integration.test.ts` — "reports the pre-reset counts…") once `submit_flight` exists. Slice 1 had no other path; slice 2 should make the protocol-level seeding the default.
-- **`cancelFlight` stub currently throws** — slice 5 owns the auto-regen cascade. Slice 2 should leave it alone (and document the intentional throw in its own test if it tries `submit → cancel` flows).
+### Handoff to slice 3
+
+- **`ScheduleSnapshot` is still `unknown` in `airport-state.ts`.** Slice 3 owns refining it to the PRD `ScheduleSnapshot` shape (`generated_at`, `schedule_start_at` UTC, `timezone`, `horizon_min`, `scheduled[]`, `unscheduled[]`, `totals`) and wiring `Scheduler` through `replaceSchedule`. The current `cancelFlight` stub throws until slice 5 — slice 3 should not regenerate after submission; the schedule only refreshes on explicit `generate_schedule` per the PRD.
+- **`atc://queue` entries deliberately omit placement/reason fields.** Slice 3 extends the queue entry shape for *scheduled* flights (runway_id/gate_id/offsets) and slice 4 adds `blocking_flight_number` for `dependency_*` unscheduled reasons. The `toQueueEntry` helper in `mcp-server.ts` is the single place to extend — keep snake_case wire keys and the conditional-spread pattern for optionals.
+- **`Flight.state` is the source of truth for queue-entry state.** Slice 3 needs to flip flights between `submitted` / `scheduled` / `unscheduled` after each Scheduling Pass. Either expose a setter on `AirportState` or have `replaceSchedule` accept a richer payload and update the queue's `state` field in lockstep — pick one, don't split the responsibility.
+- **`ValidationReason` taxonomy in `error-envelope.ts` is intentionally narrow** (`invalid_input` · `self_dependency` · `duplicate_flight_number`). Schedule-time taxonomy (`no_compatible_runway`, `horizon_exceeded`, `dependency_*`) lives on `UnscheduledEntry`, not in this envelope. Don't mix the two.
 
 ## Sync convention
 
