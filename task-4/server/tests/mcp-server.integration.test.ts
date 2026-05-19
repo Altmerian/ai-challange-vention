@@ -76,13 +76,18 @@ async function readQueue(client: Client): Promise<{
   return JSON.parse(first.text) as { flights: Array<Record<string, unknown>> };
 }
 
-describe("MCP server — catalogues (slice 3)", () => {
-  it("advertises exactly generate_schedule, reset_state, and submit_flight", async () => {
+describe("MCP server — catalogues (slice 5)", () => {
+  it("advertises exactly cancel_flight, generate_schedule, reset_state, and submit_flight", async () => {
     const { client, cleanup } = await connectClient();
     try {
       const { tools } = await client.listTools();
       const names = tools.map((t) => t.name).sort();
-      expect(names).toEqual(["generate_schedule", "reset_state", "submit_flight"]);
+      expect(names).toEqual([
+        "cancel_flight",
+        "generate_schedule",
+        "reset_state",
+        "submit_flight",
+      ]);
     } finally {
       await cleanup();
     }
@@ -874,6 +879,249 @@ describe("brief scenario — Connecting Flight", () => {
         expect(e.detail).toContain("A");
         expect(e.detail).toContain("B");
       }
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+describe("cancel_flight", () => {
+  async function callCancel(
+    client: Client,
+    args: { flight_number: string; timezone?: string },
+  ) {
+    return client.callTool({ name: "cancel_flight", arguments: args });
+  }
+
+  it("cancels a submitted flight and returns { cancelled, flight_number, schedule }", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "AA100", operation: "arrival", priority: "high" },
+      });
+      const resp = await callCancel(client, { flight_number: "AA100" });
+      expect(resp.isError).toBeFalsy();
+      const sc = resp.structuredContent as {
+        cancelled: true;
+        flight_number: string;
+        schedule: SnapshotShape;
+      };
+      expect(sc.cancelled).toBe(true);
+      expect(sc.flight_number).toBe("AA100");
+      expect(sc.schedule.totals.cancelled).toBe(1);
+      expect(sc.schedule.scheduled).toHaveLength(0);
+
+      const queue = await readQueue(client);
+      expect(queue.flights[0]?.state).toBe("cancelled");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("returns an isError envelope for an unknown flight number", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      const resp = await callCancel(client, { flight_number: "GHOST" });
+      expect(resp.isError).toBe(true);
+      const errors = parseEnvelopeErrors(resp);
+      expect(errors[0]?.reason).toBe("invalid_input");
+      expect(errors[0]?.flight_number).toBe("GHOST");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("returns an isError envelope for an invalid IANA timezone (no silent fallback)", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "AA100", operation: "arrival", priority: "high" },
+      });
+      const resp = await callCancel(client, {
+        flight_number: "AA100",
+        timezone: "Mars/Olympus",
+      });
+      expect(resp.isError).toBe(true);
+      const errors = parseEnvelopeErrors(resp);
+      expect(errors[0]?.reason).toBe("invalid_input");
+      expect(errors[0]?.field).toBe("timezone");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("rejects unknown fields via the strict input schema even when the flight exists", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      // Submit AA100 first so the only path to isError is the strict-schema
+      // rejection — otherwise an unknown_flight_number envelope would
+      // false-positive-pass this test.
+      const sub = await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "AA100", operation: "arrival", priority: "high" },
+      });
+      expect(sub.isError).toBeFalsy();
+      const resp = await client.callTool({
+        name: "cancel_flight",
+        arguments: { flight_number: "AA100", reason: "weather" } as Record<string, unknown>,
+      });
+      expect(resp.isError).toBe(true);
+      // The flight must still be cancellable through the normal path —
+      // proves the strict rejection did not actually mutate state.
+      const ok = await callCancel(client, { flight_number: "AA100" });
+      expect(ok.isError).toBeFalsy();
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("cancels an unscheduled flight (no_compatible_runway) and flips its state to cancelled via MCP", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: {
+          flight_number: "HVY",
+          operation: "departure",
+          priority: "high",
+          min_runway_length_m: 9999,
+        },
+      });
+      // Force HVY into `unscheduled` first via an explicit pass.
+      const gen = await generateSchedule(client);
+      expect(gen.unscheduled[0]?.flight_number).toBe("HVY");
+      expect(gen.unscheduled[0]?.reason).toBe("no_compatible_runway");
+
+      const cancel = await callCancel(client, { flight_number: "HVY" });
+      expect(cancel.isError).toBeFalsy();
+      const sc = (cancel.structuredContent as { schedule: SnapshotShape }).schedule;
+      expect(sc.scheduled).toHaveLength(0);
+      expect(sc.unscheduled).toHaveLength(0);
+      expect(sc.totals.cancelled).toBe(1);
+
+      const queue = await readQueue(client);
+      expect(queue.flights[0]?.state).toBe("cancelled");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("re-cancel is idempotent — returns success with the same schedule, does not error", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "AA100", operation: "arrival", priority: "high" },
+      });
+      const first = await callCancel(client, { flight_number: "AA100" });
+      expect(first.isError).toBeFalsy();
+      const second = await callCancel(client, { flight_number: "AA100" });
+      expect(second.isError).toBeFalsy();
+      const sc1 = (first.structuredContent as { schedule: SnapshotShape }).schedule;
+      const sc2 = (second.structuredContent as { schedule: SnapshotShape }).schedule;
+      // Identical payload — no fresh pass between calls.
+      expect(JSON.stringify(sc2)).toBe(JSON.stringify(sc1));
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("auto-regen cascade — cancel A re-evaluates B to dependency_cancelled without an explicit generate_schedule", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({ name: "reset_state", arguments: {} });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "A", operation: "arrival", priority: "high" },
+      });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: {
+          flight_number: "B",
+          operation: "departure",
+          priority: "medium",
+          dependencies: ["A"],
+        },
+      });
+      // Generate once so we have a baseline schedule.
+      await generateSchedule(client);
+
+      const cancel = await callCancel(client, { flight_number: "A" });
+      expect(cancel.isError).toBeFalsy();
+      const sc = (cancel.structuredContent as { schedule: SnapshotShape }).schedule;
+      const b = sc.unscheduled.find((e) => e.flight_number === "B");
+      expect(b?.reason).toBe("dependency_cancelled");
+      expect(b?.blocking_flight_number).toBe("A");
+      expect(sc.scheduled.find((e) => e.flight_number === "A")).toBeUndefined();
+
+      // Same view on the resource — no extra generate_schedule between.
+      const queue = await readQueue(client);
+      const aQ = queue.flights.find((f) => f.flight_number === "A");
+      const bQ = queue.flights.find((f) => f.flight_number === "B");
+      expect(aQ?.state).toBe("cancelled");
+      expect(bQ?.state).toBe("unscheduled");
+      expect(bQ?.reason).toBe("dependency_cancelled");
+      expect(bQ?.blocking_flight_number).toBe("A");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("transitive cascade — A→B→C, cancelling A flips B to dependency_cancelled and C to dependency_unscheduled", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "A", operation: "arrival", priority: "high" },
+      });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: {
+          flight_number: "B",
+          operation: "departure",
+          priority: "high",
+          dependencies: ["A"],
+        },
+      });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: {
+          flight_number: "C",
+          operation: "departure",
+          priority: "high",
+          dependencies: ["B"],
+        },
+      });
+      const cancel = await callCancel(client, { flight_number: "A" });
+      const sc = (cancel.structuredContent as { schedule: SnapshotShape }).schedule;
+      const b = sc.unscheduled.find((e) => e.flight_number === "B");
+      const c = sc.unscheduled.find((e) => e.flight_number === "C");
+      expect(b?.reason).toBe("dependency_cancelled");
+      expect(b?.blocking_flight_number).toBe("A");
+      expect(c?.reason).toBe("dependency_unscheduled");
+      expect(c?.blocking_flight_number).toBe("B");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("re-submitting a cancelled flight number is still rejected", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "AA100", operation: "arrival", priority: "high" },
+      });
+      await callCancel(client, { flight_number: "AA100" });
+      const dup = await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "AA100", operation: "departure", priority: "low" },
+      });
+      expect(dup.isError).toBe(true);
+      const errors = parseEnvelopeErrors(dup);
+      expect(errors[0]?.reason).toBe("duplicate_flight_number");
     } finally {
       await cleanup();
     }

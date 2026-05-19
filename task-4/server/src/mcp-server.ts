@@ -1,9 +1,9 @@
 /**
  * Constructs the MCP server surface — registers tools and resources against an
- * `AirportState`. Slice 3 adds `generate_schedule`, the `atc://runways` and
- * `atc://timeline` resources, extends `atc://queue` with placement/reason data,
- * and wires the deep `Scheduler` + `TimezoneFormatter` modules in. Later slices
- * add `cancel_flight`, `get_airport_status`, and `analyze_bottleneck`.
+ * `AirportState`. Slice 3 added `generate_schedule`, the `atc://runways` and
+ * `atc://timeline` resources, and wired the deep `Scheduler` + `TimezoneFormatter`
+ * modules in. Slice 5 adds `cancel_flight` (with auto-regen cascade). Later
+ * slices add `get_airport_status` and `analyze_bottleneck`.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -53,6 +53,11 @@ const SubmitFlightOutputShape = {
 } as const;
 
 const GenerateScheduleInputSchema = z.strictObject({
+  timezone: z.string().min(1).optional(),
+});
+
+const CancelFlightInputSchema = z.strictObject({
+  flight_number: z.string().min(1),
   timezone: z.string().min(1).optional(),
 });
 
@@ -108,6 +113,12 @@ const ScheduleSnapshotSchema = z.object({
 });
 
 const GenerateScheduleOutputShape = {
+  schedule: ScheduleSnapshotSchema,
+} as const;
+
+const CancelFlightOutputShape = {
+  cancelled: z.literal(true),
+  flight_number: z.string(),
   schedule: ScheduleSnapshotSchema,
 } as const;
 
@@ -253,6 +264,55 @@ export function createMcpServer(state: AirportState): McpServer {
       });
       state.replaceSchedule(snapshot);
       const structuredContent = { schedule: snapshot };
+      return {
+        structuredContent,
+        content: [{ type: "text", text: JSON.stringify(structuredContent) }],
+      };
+    },
+  );
+
+  server.registerTool(
+    "cancel_flight",
+    {
+      title: "Cancel a flight and auto-regen the schedule",
+      description:
+        "Mark a flight `cancelled` (terminal, idempotent) and immediately re-run the scheduler. " +
+        "Direct + transitive dependents come back as `unscheduled` with reason `dependency_cancelled` / `dependency_unscheduled` in the same round-trip — no explicit `generate_schedule` is required. " +
+        "Returns an error envelope for an unknown `flight_number` or an invalid IANA `timezone`.",
+      inputSchema: CancelFlightInputSchema,
+      outputSchema: CancelFlightOutputShape,
+    },
+    async (args) => {
+      const flightNumber = args.flight_number;
+      const timezone = args.timezone ?? state.config.defaultTimezone;
+      if (!isValidIanaTimezone(timezone)) {
+        return errorEnvelope([
+          {
+            reason: "invalid_input",
+            message: `unknown IANA timezone "${timezone}"`,
+            field: "timezone",
+          },
+        ]);
+      }
+      const outcome = state.cancelFlight(flightNumber, {
+        now: new Date(),
+        timezone,
+      });
+      if (!outcome.ok) {
+        return errorEnvelope([
+          {
+            reason: "invalid_input",
+            message: `flight number ${flightNumber} does not exist`,
+            flight_number: flightNumber,
+            field: "flight_number",
+          },
+        ]);
+      }
+      const structuredContent = {
+        cancelled: true as const,
+        flight_number: flightNumber,
+        schedule: outcome.schedule,
+      };
       return {
         structuredContent,
         content: [{ type: "text", text: JSON.stringify(structuredContent) }],

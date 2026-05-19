@@ -8,7 +8,7 @@
  */
 
 import type { Config } from "./config.js";
-import type { ScheduleSnapshot } from "./scheduler.js";
+import { runSchedulingPass, type ScheduleSnapshot } from "./scheduler.js";
 
 export type { ScheduleSnapshot } from "./scheduler.js";
 
@@ -49,6 +49,15 @@ export type ResetResult = Readonly<{
 export type AddFlightOutcome =
   | { ok: true; flight: Flight }
   | { ok: false; reason: "duplicate_flight_number"; existing: Flight };
+
+export type CancelFlightOptions = Readonly<{
+  now: Date;
+  timezone: string;
+}>;
+
+export type CancelFlightOutcome =
+  | { ok: true; schedule: ScheduleSnapshot }
+  | { ok: false; reason: "unknown_flight_number" };
 
 export class AirportState {
   readonly #config: Config;
@@ -108,8 +117,40 @@ export class AirportState {
     return { ok: true, flight };
   }
 
-  cancelFlight(_flightNumber: string): void {
-    throw new Error("AirportState.cancelFlight not implemented until slice 5");
+  /**
+   * Marks a flight `cancelled` (terminal) and immediately runs a fresh Scheduling
+   * Pass so direct + transitive dependents are re-evaluated in the same call. The
+   * caller observes the cascade through the returned `ScheduleSnapshot` without an
+   * explicit `generate_schedule` follow-up (PRD User Stories 13/14).
+   *
+   * Idempotent: cancelling a flight already in state `cancelled` returns the
+   * current schedule unchanged and does *not* re-run the pass. The first cancel
+   * always installs a snapshot, so `#schedule` is guaranteed non-null whenever
+   * any flight is in state `cancelled` — but if the impossible happens, fall
+   * back to a freshly recomputed pass rather than returning stale `null`.
+   */
+  cancelFlight(flightNumber: string, options: CancelFlightOptions): CancelFlightOutcome {
+    const existing = this.#byFlightNumber.get(flightNumber);
+    if (existing === undefined) {
+      return { ok: false, reason: "unknown_flight_number" };
+    }
+    if (existing.state === "cancelled") {
+      const current = this.#schedule;
+      if (current !== null) return { ok: true, schedule: current };
+      const snapshot = runSchedulingPass(this.#queue, this.#config, options);
+      this.replaceSchedule(snapshot);
+      return { ok: true, schedule: snapshot };
+    }
+    // Flip to cancelled BEFORE the pass so the scheduler treats this flight as
+    // cancelled when scanning predecessors (direct dependents → dependency_cancelled).
+    const cancelled: Flight = { ...existing, state: "cancelled" };
+    this.#queue = this.#queue.map((f) =>
+      f.flightNumber === flightNumber ? cancelled : f,
+    );
+    this.#byFlightNumber.set(flightNumber, cancelled);
+    const snapshot = runSchedulingPass(this.#queue, this.#config, options);
+    this.replaceSchedule(snapshot);
+    return { ok: true, schedule: snapshot };
   }
 
   /**

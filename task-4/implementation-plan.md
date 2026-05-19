@@ -12,7 +12,7 @@ Repo: [Altmerian/ai-challenge-vention](https://github.com/Altmerian/ai-challenge
 | 2 | `submit_flight` + `atc://queue` | AFK | #9 | [#10](https://github.com/Altmerian/ai-challenge-vention/issues/10) | - [x] |
 | 3 | `generate_schedule` MVP + `atc://runways` + `atc://timeline` + `TimezoneFormatter` + Morning Rush | AFK | #10 | [#11](https://github.com/Altmerian/ai-challenge-vention/issues/11) | - [x] |
 | 4 | Dependencies in `Scheduler` + Connecting Flight | AFK | #11 | [#12](https://github.com/Altmerian/ai-challenge-vention/issues/12) | - [x] |
-| 5 | `cancel_flight` with auto-regen cascade | AFK | #12 | [#13](https://github.com/Altmerian/ai-challenge-vention/issues/13) | - [ ] |
+| 5 | `cancel_flight` with auto-regen cascade | AFK | #12 | [#13](https://github.com/Altmerian/ai-challenge-vention/issues/13) | - [x] |
 | 6 | `get_airport_status` + Heavy Hauler | AFK | #11, #12 | [#14](https://github.com/Altmerian/ai-challenge-vention/issues/14) | - [ ] |
 | 7 | `analyze_bottleneck` (CPM critical path) | AFK | #12 | [#15](https://github.com/Altmerian/ai-challenge-vention/issues/15) | - [ ] |
 | 8 | Determinism + extra scenarios + Inspector verification | AFK | #13, #14, #15 | [#16](https://github.com/Altmerian/ai-challenge-vention/issues/16) | - [ ] |
@@ -88,16 +88,16 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 
 ### Slice 5 — `cancel_flight` with auto-regen cascade · [#13](https://github.com/Altmerian/ai-challenge-vention/issues/13)
 
-- [ ] `cancel_flight({ flight_number, timezone? })` returns `{ cancelled: true, flight_number, schedule }`
-- [ ] Transitions `submitted` / `scheduled` / `unscheduled` → `cancelled` (terminal); re-cancel is idempotent
-- [ ] Cancelling unknown `flight_number` returns an `isError` envelope
-- [ ] `AirportState.cancelFlight` invokes `Scheduler` and replaces the schedule **before** returning
-- [ ] Direct + transitive dependents come back `unscheduled` with reason `dependency_cancelled` + `blocking_flight_number`
-- [ ] **Narrow stability invariant:** cancelling a flight that has no dependents *and* whose runway/gate slot is uncontested (no waiting flight in the queue could claim it) leaves all other offsets byte-identical. Asserted via a deliberately uncontested fixture; the wider claim ("any cancel leaves unrelated flights stable") is **not** an invariant of greedy scheduling and is not tested.
-- [ ] Re-submitting a cancelled `flight_number` is still rejected
-- [ ] Unit tests: cancel `submitted`, cancel scheduled leaf (uncontested → stability holds), single-dependent cascade, transitive cascade, idempotency, unknown error, narrow stability fixture
-- [ ] Integration test: full submit → schedule → cancel cascade in one round-trip
-- [ ] Inspector CLI verification: "cancel A re-evaluates B to `dependency_cancelled` without explicit `generate_schedule`"
+- [x] `cancel_flight({ flight_number, timezone? })` returns `{ cancelled: true, flight_number, schedule }`
+- [x] Transitions `submitted` / `scheduled` / `unscheduled` → `cancelled` (terminal); re-cancel is idempotent
+- [x] Cancelling unknown `flight_number` returns an `isError` envelope
+- [x] `AirportState.cancelFlight` invokes `Scheduler` and replaces the schedule **before** returning
+- [x] Direct + transitive dependents come back `unscheduled` with reason `dependency_cancelled` + `blocking_flight_number`
+- [x] **Narrow stability invariant:** cancelling a flight that has no dependents *and* whose runway/gate slot is uncontested (no waiting flight in the queue could claim it) leaves all other offsets byte-identical. Asserted via a deliberately uncontested fixture; the wider claim ("any cancel leaves unrelated flights stable") is **not** an invariant of greedy scheduling and is not tested.
+- [x] Re-submitting a cancelled `flight_number` is still rejected
+- [x] Unit tests: cancel `submitted`, cancel scheduled leaf (uncontested → stability holds), single-dependent cascade, transitive cascade, idempotency, unknown error, narrow stability fixture
+- [x] Integration test: full submit → schedule → cancel cascade in one round-trip
+- [x] Inspector CLI verification: "cancel A re-evaluates B to `dependency_cancelled` without explicit `generate_schedule`"
 
 ### Slice 6 — `get_airport_status` + Heavy Hauler · [#14](https://github.com/Altmerian/ai-challenge-vention/issues/14)
 
@@ -163,28 +163,33 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 
 > After closing a slice, record durable cross-slice patterns or footguns that future agents will hit *regardless of which slice they pick* under **Persistent gotchas**, and *only next-slice-actionable* deferrals or reuse-or-roll-your-own choices under **Handoff**. Delete superseded bullets — this is a glanceable view, not an audit log.
 
-### Persistent gotchas (from slices 1–4, still apply)
+### Persistent gotchas (from slices 1–5, still apply)
 
 - **Every new tool gets `z.strictObject(...)` as its `inputSchema`.** Plain `z.object` advertises `additionalProperties: true` and silently accepts unknown fields on the wire.
 - **`exactOptionalPropertyTypes: true` is on.** Don't assign `x: undefined` to optional output keys — conditionally spread (`...(x !== undefined ? { x } : {})`) so JSON serialization omits the key cleanly.
 - **Never hand-roll an error envelope — always go through `errorEnvelope()`.** It deliberately omits `structuredContent`: the SDK client validates `structuredContent` against the tool's *success* output schema whenever present, regardless of `isError`, and any error-shaped object trips the validator. Vitest doesn't expose this because it skips `listTools()`; Inspector does.
 - **Two validation paths by design — don't harmonize.** The SDK auto-validates input against `inputSchema` and emits `isError: true` with text-formatted zod issues. `errorEnvelope` carries `{errors: ValidationIssue[]}` JSON for business-rule failures only. Routing schema errors through our envelope would force dropping `inputSchema` from `registerTool` and losing the strict-schema advertisement in `tools/list`. Catalogue accuracy beats envelope-format uniformity.
-- **Inspector CLI is one-shot per process.** For cross-call scenarios drive the freshly-built server via the SDK's `StdioClientTransport` from a Node script — see `.verification/slice-4-stdio-driver.mjs` for the current pattern. Slice 8 collapses both paths into a single `npm run verify:inspector` command.
+- **Inspector CLI is one-shot per process.** For cross-call scenarios drive the freshly-built server via the SDK's `StdioClientTransport` from a Node script — see `.verification/slice-5-stdio-driver.mjs` for the current pattern. Slice 8 collapses both paths into a single `npm run verify:inspector` command.
 - **All IANA timezone parsing goes through `isValidIanaTimezone` in `config.ts`.** `Intl.DateTimeFormat` silently canonicalizes case-folded names (`Asia/Kolkata` → `Asia/Calcutta`); the helper enforces the exact round-trip. Reuse it from any per-call `timezone` argument — don't re-derive the check.
 - **`Scheduler` and `TimezoneFormatter` are pure — keep them clock-free and env-free.** `runSchedulingPass` takes `{ now, timezone }` as an explicit option; the handler injects `new Date()` and the resolved tz. Tests pin both for deterministic assertions.
 - **Reuse the zod schemas exported from `mcp-server.ts`** (`ScheduleSnapshotSchema` / `ScheduleEntrySchema` / `UnscheduledEntrySchema`) when wiring `cancel_flight`, `get_airport_status`, or `analyze_bottleneck`. Re-deriving the shape risks catalogue drift.
 - **`ValidationReason` in `error-envelope.ts` is intentionally narrow** (`invalid_input` · `self_dependency` · `duplicate_flight_number`). Schedule-time reasons (`no_compatible_runway`, `horizon_exceeded`, `dependency_*`) live on `UnscheduledEntry`, not in this envelope — `invalid_input` is what `generate_schedule` returns for an unknown IANA timezone, not `no_compatible_runway`.
 - **`replaceSchedule(snapshot)` is the single state-mutation point after a pass.** It installs the snapshot AND flips every non-cancelled `Flight.state` in lockstep, then rebuilds the flight-number index. Adding a sibling setter that touches `Flight.state` independently would let queue state and schedule state drift; extend `replaceSchedule` instead.
 - **The `dependency_*` reason taxonomy is layered, not OR'd.** Direct missing/cancelled preds → `dependency_missing` / `dependency_cancelled` with `blocking_flight_number` = the offending pred. Cycle members → `dependency_cycle` (no `blocking_flight_number`; `detail` lists members). Everything else downstream — transitive descendants of any of the above, plus descendants of `no_compatible_runway` / `horizon_exceeded` flights — → `dependency_unscheduled` with `blocking_flight_number` = first unscheduled pred in `dependencies` order. The cascade only points one hop back.
+- **`AirportState.cancelFlight` is the single mutation point for the cancel transition.** It flips `Flight.state` → `cancelled` *before* running `runSchedulingPass`, so the pass treats the flight as cancelled (direct dependents emit `dependency_cancelled`) and `replaceSchedule` leaves the cancelled entry alone. Don't add a sibling setter that touches `state` independently — extending `cancelFlight` keeps queue and schedule state lockstep.
+- **Idempotent re-cancel returns `state.schedule` by reference** without re-running the pass — that's intentional per PRD ("returns success with the current schedule, does not error"). The first cancel always installs a snapshot, so `#schedule` is non-null whenever any flight is in state `cancelled`; the defensive null-fallback path in `cancelFlight` exists only to harden against future regressions.
+- **Stability invariant is narrow, not global.** Cancelling a flight that has no dependents *and* whose runway/gate slot is uncontested leaves all other offsets byte-identical. The wider "any cancel leaves unrelated flights stable" claim is NOT an invariant of greedy scheduling — a freed slot can be reclaimed earlier by a contested lower-priority flight. Test it only via a deliberately uncontested fixture (over-provisioned resources, single dependent-free leaf).
+- **`flight_number` uniqueness survives cancellation.** Re-submitting a cancelled `flight_number` is still rejected by `addFlight`'s duplicate check (it iterates the full queue, including cancelled). No extra work needed in any future slice — just don't regress it.
+- **To build a pre-pass scheduled baseline in tests, call `runSchedulingPass(state.queue, state.config, options)` + `state.replaceSchedule(baseline)` explicitly.** `AirportState.cancelFlight` only runs a pass on the cancel transition itself, not on submission — tests that need to prove "X was scheduled before the cancel" must establish that state themselves.
 
-### Handoff to slice 5
+### Handoff to slice 6
 
-- **`AirportState.cancelFlight` is currently a `throw new Error("not implemented until slice 5")` stub.** Slice 5 owns the full implementation: transition `submitted`/`scheduled`/`unscheduled` → `cancelled` (terminal, idempotent re-cancel), invoke `runSchedulingPass` synchronously, and call `replaceSchedule(snapshot)` BEFORE returning so direct + transitive dependents land as `dependency_cancelled` / `dependency_unscheduled` in the same round-trip. Re-cancel of an already-cancelled flight returns `{ cancelled: true, ... }` without re-running the pass; cancelling an unknown number returns an `isError` envelope.
-- **Scheduler already emits `dependency_cancelled` correctly** for direct dependents of cancelled preds (the scheduler filters cancelled flights out of `active`, then the missing/cancelled scan in step 2 flags direct dependents). Transitive descendants land as `dependency_unscheduled` via the post-loop cascade. Slice 5 just needs to trigger the pass after the cancel — no scheduler work.
-- **`replaceSchedule` already flips `Flight.state` in lockstep with the new snapshot.** The cancelled flight itself is the one transition the scheduler does NOT make (it stays out of the snapshot entirely); `AirportState.cancelFlight` mutates that flight's `state` to `cancelled` *before* invoking `runSchedulingPass`, so the pass treats it as cancelled and `replaceSchedule` leaves it alone.
-- **Stability invariant is narrow, not global.** Cancelling a flight that has no dependents *and* whose runway/gate slot is uncontested (no waiting flight in the queue could claim it) leaves all other offsets byte-identical. The wider "any cancel leaves unrelated flights stable" claim is NOT an invariant of greedy scheduling — don't try to assert it. The slice-5 unit test should be a deliberately uncontested fixture (over-provisioned resources, single flight + leaf cancel).
-- **`flight_number` uniqueness survives cancellation.** Re-submitting a cancelled `flight_number` is still rejected by the existing `addFlight` duplicate check — that check already iterates the full queue (including cancelled flights). No extra work needed in slice 5.
-- **Inspector CLI driver pattern continues:** copy `.verification/slice-4-stdio-driver.mjs` → `slice-5-stdio-driver.mjs` and add the cancel-A-from-Connecting-Flight scenario (A `cancelled`, B comes back `unscheduled` reason `dependency_cancelled` blocking=A, no explicit `generate_schedule` between cancel and the assertion).
+- **`get_airport_status` is a pure read-side feature — no scheduler changes.** Read `state.queue`, `state.schedule`, and `state.config`. The shape must match the PRD `AirportStatus` definition **exactly** — no saturation field, no ground_crew in `resources`, no convenience totals. Catalogue drift is the failure mode the slice-3/4 strict-schema gotcha was written to prevent.
+- **`resources.runways[].busy_minutes` math is already implemented in `buildRunwaysResource` in `mcp-server.ts` (slice 3).** Extract it to a shared helper (or import from `mcp-server.ts`) for `get_airport_status` — don't re-derive the trailing-buffer logic. `resources.gates[].busy_minutes` is the sum of `gate_window` durations with **no** trailing buffer (gate turnaround already covers it — per PRD `AirportStatus` notes).
+- **`schedule_completion` is `null` iff `state.schedule === null`** (no `generate_schedule` *or* `cancel_flight` has ever run in this process — both install a snapshot). After an all-unscheduled pass, return `{ schedule_start_at, makespan_min: 0, completion_at: schedule_start_at }`. `schedule_start_at` / `completion_at` are **UTC** ISO-8601 instants per ADR-0002; client-tz rendering is the job of `start_at`/`end_at` on `ScheduleEntry`, not this tool.
+- **`constraints.*` are scans over `state.schedule?.unscheduled` reasons** — `runway_blocking` ⇔ any `no_compatible_runway`, `horizon_blocking` ⇔ any `horizon_exceeded`, `dependency_blocking` ⇔ any `dependency_*` reason (all five — `dependency_cycle`, `_missing`, `_cancelled`, `_unscheduled`). `any_blocked` = OR of the three.
+- **Heavy Hauler scenario** is the slice's brief walkthrough — see `AGENTS.md` § "Scenario walkthroughs". Submit one high-priority departure with `min_runway_length_m` > every configured runway plus one or more valid flights → `generate_schedule` → call `get_airport_status`. Assert heavy is `unscheduled` reason `no_compatible_runway`, valid flights scheduled, `constraints.runway_blocking: true`. Reuse the slice-5 stdio driver pattern (`.verification/slice-5-stdio-driver.mjs`).
+- **Status reads do not recompute** — assert byte-identical payloads across repeated calls in the integration tests, mirroring how `atc://queue`/`atc://runways` already do (slice 3 set the precedent).
 
 ## Sync convention
 

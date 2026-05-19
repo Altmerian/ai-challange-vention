@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { AirportState, type ScheduleSnapshot } from "../src/airport-state.js";
 import type { Config } from "../src/config.js";
+import { runSchedulingPass } from "../src/scheduler.js";
+
+const CANCEL_OPTIONS = { now: new Date("2026-05-19T10:00:00Z"), timezone: "UTC" } as const;
 
 const EMPTY_SNAPSHOT: ScheduleSnapshot = {
   generated_at: "2026-05-19T10:00:00Z",
@@ -149,5 +152,192 @@ describe("AirportState.reset", () => {
       dependencies: [],
     });
     expect(again.ok).toBe(true);
+  });
+});
+
+describe("AirportState.cancelFlight", () => {
+  it("returns unknown_flight_number for a flight that was never submitted", () => {
+    const state = makeState();
+    const outcome = state.cancelFlight("ZZ999", CANCEL_OPTIONS);
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    expect(outcome.reason).toBe("unknown_flight_number");
+  });
+
+  it("cancels a submitted flight, runs a pass, and stores the snapshot", () => {
+    const state = makeState();
+    state.addFlight({
+      flightNumber: "AA100",
+      operation: "arrival",
+      priority: "high",
+      dependencies: [],
+    });
+    const outcome = state.cancelFlight("AA100", CANCEL_OPTIONS);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(state.findFlight("AA100")?.state).toBe("cancelled");
+    expect(outcome.schedule.scheduled).toHaveLength(0);
+    expect(outcome.schedule.unscheduled).toHaveLength(0);
+    expect(outcome.schedule.totals.cancelled).toBe(1);
+    // Snapshot stored: subsequent reads see the cancellation reflected.
+    expect(state.schedule).toBe(outcome.schedule);
+  });
+
+  it("cancels a scheduled leaf flight without dependents and keeps neighbouring offsets byte-identical (narrow stability)", () => {
+    // Over-provisioned: 4 gates, 2 runways, 2 crew, no contention.
+    const state = makeState();
+    state.addFlight({
+      flightNumber: "KEEP",
+      operation: "arrival",
+      priority: "medium",
+      dependencies: [],
+    });
+    state.addFlight({
+      flightNumber: "LEAF",
+      operation: "departure",
+      priority: "low",
+      dependencies: [],
+    });
+    // Establish a pre-cancel baseline schedule where LEAF was actually scheduled,
+    // so the post-cancel comparison is against a real scheduled-leaf state.
+    const baseline = runSchedulingPass(state.queue, state.config, CANCEL_OPTIONS);
+    state.replaceSchedule(baseline);
+    expect(baseline.scheduled).toHaveLength(2);
+    expect(state.findFlight("LEAF")?.state).toBe("scheduled");
+    const keepBefore = baseline.scheduled.find((e) => e.flight_number === "KEEP")!;
+
+    const outcome = state.cancelFlight("LEAF", CANCEL_OPTIONS);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.schedule.scheduled).toHaveLength(1);
+    const keepAfter = outcome.schedule.scheduled.find((e) => e.flight_number === "KEEP")!;
+    // Narrow stability: cancelling an uncontested leaf leaves KEEP's placement
+    // byte-identical (offsets, windows, runway/gate assignment).
+    expect(keepAfter.start_offset_min).toBe(keepBefore.start_offset_min);
+    expect(keepAfter.end_offset_min).toBe(keepBefore.end_offset_min);
+    expect(keepAfter.runway_id).toBe(keepBefore.runway_id);
+    expect(keepAfter.gate_id).toBe(keepBefore.gate_id);
+    expect(keepAfter.runway_window).toEqual(keepBefore.runway_window);
+    expect(keepAfter.gate_window).toEqual(keepBefore.gate_window);
+  });
+
+  it("cancels an unscheduled flight and flips its state to cancelled", () => {
+    // Configure a no_compatible_runway flight by requiring a length no runway provides.
+    const state = makeState();
+    state.addFlight({
+      flightNumber: "HVY",
+      operation: "departure",
+      priority: "high",
+      dependencies: [],
+      minRunwayLengthM: 9999,
+    });
+    // Run the pass so HVY lands in state `unscheduled` first.
+    const baseline = runSchedulingPass(state.queue, state.config, CANCEL_OPTIONS);
+    state.replaceSchedule(baseline);
+    expect(state.findFlight("HVY")?.state).toBe("unscheduled");
+
+    const outcome = state.cancelFlight("HVY", CANCEL_OPTIONS);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(state.findFlight("HVY")?.state).toBe("cancelled");
+    expect(outcome.schedule.scheduled).toHaveLength(0);
+    expect(outcome.schedule.unscheduled).toHaveLength(0);
+    expect(outcome.schedule.totals.cancelled).toBe(1);
+  });
+
+  it("cancels a scheduled flight with one dependent and cascades dependency_cancelled to it", () => {
+    const state = makeState();
+    state.addFlight({
+      flightNumber: "A",
+      operation: "arrival",
+      priority: "high",
+      dependencies: [],
+    });
+    state.addFlight({
+      flightNumber: "B",
+      operation: "departure",
+      priority: "medium",
+      dependencies: ["A"],
+    });
+    const outcome = state.cancelFlight("A", CANCEL_OPTIONS);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const b = outcome.schedule.unscheduled.find((e) => e.flight_number === "B");
+    expect(b?.reason).toBe("dependency_cancelled");
+    expect(b?.blocking_flight_number).toBe("A");
+    expect(state.findFlight("A")?.state).toBe("cancelled");
+    expect(state.findFlight("B")?.state).toBe("unscheduled");
+  });
+
+  it("cascades transitively: cancelling A leaves B as dependency_cancelled and C as dependency_unscheduled", () => {
+    const state = makeState();
+    state.addFlight({
+      flightNumber: "A",
+      operation: "arrival",
+      priority: "high",
+      dependencies: [],
+    });
+    state.addFlight({
+      flightNumber: "B",
+      operation: "departure",
+      priority: "high",
+      dependencies: ["A"],
+    });
+    state.addFlight({
+      flightNumber: "C",
+      operation: "departure",
+      priority: "high",
+      dependencies: ["B"],
+    });
+    const outcome = state.cancelFlight("A", CANCEL_OPTIONS);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const b = outcome.schedule.unscheduled.find((e) => e.flight_number === "B");
+    const c = outcome.schedule.unscheduled.find((e) => e.flight_number === "C");
+    expect(b?.reason).toBe("dependency_cancelled");
+    expect(b?.blocking_flight_number).toBe("A");
+    expect(c?.reason).toBe("dependency_unscheduled");
+    expect(c?.blocking_flight_number).toBe("B");
+  });
+
+  it("idempotent re-cancel returns the same stored snapshot without re-running the pass", () => {
+    const state = makeState();
+    state.addFlight({
+      flightNumber: "A",
+      operation: "arrival",
+      priority: "high",
+      dependencies: [],
+    });
+    const first = state.cancelFlight("A", CANCEL_OPTIONS);
+    expect(first.ok).toBe(true);
+    const second = state.cancelFlight("A", {
+      ...CANCEL_OPTIONS,
+      now: new Date("2026-06-01T00:00:00Z"),
+    });
+    expect(second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    // Same snapshot reference — no fresh pass on idempotent re-cancel.
+    expect(second.schedule).toBe(first.schedule);
+  });
+
+  it("rejects re-submission of a cancelled flight number (uniqueness survives cancellation)", () => {
+    const state = makeState();
+    state.addFlight({
+      flightNumber: "A",
+      operation: "arrival",
+      priority: "high",
+      dependencies: [],
+    });
+    state.cancelFlight("A", CANCEL_OPTIONS);
+    const again = state.addFlight({
+      flightNumber: "A",
+      operation: "departure",
+      priority: "low",
+      dependencies: [],
+    });
+    expect(again.ok).toBe(false);
+    if (again.ok) return;
+    expect(again.reason).toBe("duplicate_flight_number");
+    expect(again.existing.state).toBe("cancelled");
   });
 });
