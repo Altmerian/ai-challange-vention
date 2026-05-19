@@ -76,8 +76,8 @@ async function readQueue(client: Client): Promise<{
   return JSON.parse(first.text) as { flights: Array<Record<string, unknown>> };
 }
 
-describe("MCP server — catalogues (slice 5)", () => {
-  it("advertises exactly cancel_flight, generate_schedule, reset_state, and submit_flight", async () => {
+describe("MCP server — catalogues (slice 6)", () => {
+  it("advertises exactly cancel_flight, generate_schedule, get_airport_status, reset_state, and submit_flight", async () => {
     const { client, cleanup } = await connectClient();
     try {
       const { tools } = await client.listTools();
@@ -85,6 +85,7 @@ describe("MCP server — catalogues (slice 5)", () => {
       expect(names).toEqual([
         "cancel_flight",
         "generate_schedule",
+        "get_airport_status",
         "reset_state",
         "submit_flight",
       ]);
@@ -1188,6 +1189,578 @@ describe("brief scenario — Morning Rush", () => {
       const md1 = byNumber.get("MD1")!;
       const ld1 = byNumber.get("LD1")!;
       expect(md1.start_offset_min).toBeLessThanOrEqual(ld1.start_offset_min);
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+type AirportStatusShape = {
+  flights: {
+    by_state: {
+      submitted: number;
+      scheduled: number;
+      unscheduled: number;
+      cancelled: number;
+    };
+    by_operation: { arrival: number; departure: number };
+  };
+  resources: {
+    runways: Array<{
+      runway_id: string;
+      length_m: number;
+      operations_count: number;
+      busy_minutes: number;
+      utilization_pct: number;
+    }>;
+    gates: Array<{
+      gate_id: string;
+      operations_count: number;
+      busy_minutes: number;
+      utilization_pct: number;
+    }>;
+  };
+  constraints: {
+    runway_blocking: boolean;
+    horizon_blocking: boolean;
+    dependency_blocking: boolean;
+    any_blocked: boolean;
+  };
+  blocked_flights: UnscheduledEntryShape[];
+  schedule_completion: {
+    schedule_start_at: string;
+    makespan_min: number;
+    completion_at: string;
+  } | null;
+};
+
+async function callStatus(
+  client: Client,
+  args: { timezone?: string } = {},
+): Promise<AirportStatusShape> {
+  const resp = await client.callTool({ name: "get_airport_status", arguments: args });
+  if (resp.isError) {
+    throw new Error(`get_airport_status returned isError: ${JSON.stringify(resp.content?.[0])}`);
+  }
+  return resp.structuredContent as AirportStatusShape;
+}
+
+describe("get_airport_status", () => {
+  it("returns the canonical empty-state shape with schedule_completion null", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      const status = await callStatus(client);
+      expect(status).toEqual({
+        flights: {
+          by_state: { submitted: 0, scheduled: 0, unscheduled: 0, cancelled: 0 },
+          by_operation: { arrival: 0, departure: 0 },
+        },
+        resources: {
+          runways: [
+            {
+              runway_id: "RWY-1",
+              length_m: 2500,
+              operations_count: 0,
+              busy_minutes: 0,
+              utilization_pct: 0,
+            },
+            {
+              runway_id: "RWY-2",
+              length_m: 3500,
+              operations_count: 0,
+              busy_minutes: 0,
+              utilization_pct: 0,
+            },
+          ],
+          gates: [
+            { gate_id: "GATE-1", operations_count: 0, busy_minutes: 0, utilization_pct: 0 },
+            { gate_id: "GATE-2", operations_count: 0, busy_minutes: 0, utilization_pct: 0 },
+            { gate_id: "GATE-3", operations_count: 0, busy_minutes: 0, utilization_pct: 0 },
+            { gate_id: "GATE-4", operations_count: 0, busy_minutes: 0, utilization_pct: 0 },
+          ],
+        },
+        constraints: {
+          runway_blocking: false,
+          horizon_blocking: false,
+          dependency_blocking: false,
+          any_blocked: false,
+        },
+        blocked_flights: [],
+        schedule_completion: null,
+      });
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("counts by_state and by_operation from the raw queue when no schedule has run", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "AA1", operation: "arrival", priority: "high" },
+      });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "BB1", operation: "departure", priority: "medium" },
+      });
+      const status = await callStatus(client);
+      expect(status.flights.by_state).toEqual({
+        submitted: 2,
+        scheduled: 0,
+        unscheduled: 0,
+        cancelled: 0,
+      });
+      expect(status.flights.by_operation).toEqual({ arrival: 1, departure: 1 });
+      expect(status.schedule_completion).toBeNull();
+      expect(status.blocked_flights).toEqual([]);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("computes runway busy_minutes including trailing separation buffer", async () => {
+    const state = new AirportState({ ...makeConfig(), runwayLengthsM: [3000] });
+    const server = createMcpServer(state);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client(
+      { name: "atc-test-client", version: "0.0.0" },
+      { capabilities: {} },
+    );
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "A1", operation: "arrival", priority: "high" },
+      });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "A2", operation: "arrival", priority: "low" },
+      });
+      await generateSchedule(client);
+      const status = await callStatus(client);
+      const rwy1 = status.resources.runways[0]!;
+      // Same math as `atc://runways` test: 5 + sep(landing→landing)=2 + 5 +
+      // trailing max(landing,mixed)=3 = 15.
+      expect(rwy1.busy_minutes).toBe(15);
+      expect(rwy1.operations_count).toBe(2);
+      // Horizon = 240; utilization_pct = round(15/240*1000)/10 = 6.3.
+      expect(rwy1.utilization_pct).toBeCloseTo(6.3, 5);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("gate busy_minutes excludes any trailing buffer (sum of gate_window durations)", async () => {
+    // Single gate + over-provisioned runways so both arrivals land on the same
+    // gate and the math is deterministic.
+    const state = new AirportState({
+      ...makeConfig(),
+      gateCount: 1,
+      runwayLengthsM: [3000, 3500],
+    });
+    const server = createMcpServer(state);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client(
+      { name: "atc-test-client", version: "0.0.0" },
+      { capabilities: {} },
+    );
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "A1", operation: "arrival", priority: "high" },
+      });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "A2", operation: "arrival", priority: "low" },
+      });
+      await generateSchedule(client);
+      const status = await callStatus(client);
+      const gate1 = status.resources.gates[0]!;
+      expect(gate1.operations_count).toBe(2);
+      // Two arrivals × 30-min turnaround = 60. No trailing buffer.
+      expect(gate1.busy_minutes).toBe(60);
+      expect(gate1.utilization_pct).toBeCloseTo(25, 5);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("derives schedule_completion as makespan from scheduled entries", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "A1", operation: "arrival", priority: "high" },
+      });
+      const snap = await generateSchedule(client);
+      const status = await callStatus(client);
+      expect(status.schedule_completion).not.toBeNull();
+      const sc = status.schedule_completion!;
+      expect(sc.schedule_start_at).toBe(snap.schedule_start_at);
+      // Single arrival: makespan = end_offset_min of the only entry = 35.
+      const entry = snap.scheduled[0]!;
+      expect(sc.makespan_min).toBe(entry.end_offset_min);
+      // completion_at is the UTC ISO of schedule_start_at + makespan_min.
+      const expectedMs = Date.parse(sc.schedule_start_at) + sc.makespan_min * 60_000;
+      expect(Date.parse(sc.completion_at)).toBe(expectedMs);
+      expect(sc.completion_at).toMatch(/Z$/);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("returns makespan_min=0 and completion_at==schedule_start_at on an all-unscheduled pass", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      // Only flight is impossibly heavy → unscheduled.
+      await client.callTool({
+        name: "submit_flight",
+        arguments: {
+          flight_number: "HVY",
+          operation: "departure",
+          priority: "high",
+          min_runway_length_m: 9999,
+        },
+      });
+      await generateSchedule(client);
+      const status = await callStatus(client);
+      expect(status.schedule_completion).not.toBeNull();
+      const sc = status.schedule_completion!;
+      expect(sc.makespan_min).toBe(0);
+      expect(sc.completion_at).toBe(sc.schedule_start_at);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("flips runway_blocking and any_blocked when an unscheduled has no_compatible_runway", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: {
+          flight_number: "HVY",
+          operation: "departure",
+          priority: "high",
+          min_runway_length_m: 9999,
+        },
+      });
+      await generateSchedule(client);
+      const status = await callStatus(client);
+      expect(status.constraints).toEqual({
+        runway_blocking: true,
+        horizon_blocking: false,
+        dependency_blocking: false,
+        any_blocked: true,
+      });
+      expect(status.blocked_flights).toHaveLength(1);
+      expect(status.blocked_flights[0]?.flight_number).toBe("HVY");
+      expect(status.blocked_flights[0]?.reason).toBe("no_compatible_runway");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("flips horizon_blocking when an unscheduled has horizon_exceeded", async () => {
+    // 5-minute horizon: any submission is guaranteed to exceed it.
+    const state = new AirportState({
+      ...makeConfig(),
+      maxHorizonMin: 5,
+    });
+    const server = createMcpServer(state);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client(
+      { name: "atc-test-client", version: "0.0.0" },
+      { capabilities: {} },
+    );
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "BIG", operation: "arrival", priority: "high" },
+      });
+      await generateSchedule(client);
+      const status = await callStatus(client);
+      expect(status.constraints.horizon_blocking).toBe(true);
+      expect(status.constraints.any_blocked).toBe(true);
+      expect(status.blocked_flights[0]?.reason).toBe("horizon_exceeded");
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("flips dependency_blocking on dependency_cycle / _missing / _cancelled / _unscheduled reasons", async () => {
+    // 1. dependency_cycle: A↔B.
+    {
+      const { client, cleanup } = await connectClient();
+      try {
+        await client.callTool({
+          name: "submit_flight",
+          arguments: {
+            flight_number: "A",
+            operation: "arrival",
+            priority: "medium",
+            dependencies: ["B"],
+          },
+        });
+        await client.callTool({
+          name: "submit_flight",
+          arguments: {
+            flight_number: "B",
+            operation: "departure",
+            priority: "medium",
+            dependencies: ["A"],
+          },
+        });
+        await generateSchedule(client);
+        const s = await callStatus(client);
+        expect(s.constraints.dependency_blocking).toBe(true);
+        expect(s.constraints.any_blocked).toBe(true);
+        expect(s.blocked_flights.map((b) => b.reason).sort()).toEqual([
+          "dependency_cycle",
+          "dependency_cycle",
+        ]);
+      } finally {
+        await cleanup();
+      }
+    }
+    // 2. dependency_missing: predecessor never submitted.
+    {
+      const { client, cleanup } = await connectClient();
+      try {
+        await client.callTool({
+          name: "submit_flight",
+          arguments: {
+            flight_number: "ORPHAN",
+            operation: "departure",
+            priority: "low",
+            dependencies: ["GHOST"],
+          },
+        });
+        await generateSchedule(client);
+        const s = await callStatus(client);
+        expect(s.constraints.dependency_blocking).toBe(true);
+        expect(s.blocked_flights[0]?.reason).toBe("dependency_missing");
+        expect(s.blocked_flights[0]?.blocking_flight_number).toBe("GHOST");
+      } finally {
+        await cleanup();
+      }
+    }
+    // 3. dependency_cancelled: cancel a placed predecessor → dependent flips.
+    {
+      const { client, cleanup } = await connectClient();
+      try {
+        await client.callTool({
+          name: "submit_flight",
+          arguments: { flight_number: "A", operation: "arrival", priority: "high" },
+        });
+        await client.callTool({
+          name: "submit_flight",
+          arguments: {
+            flight_number: "B",
+            operation: "departure",
+            priority: "medium",
+            dependencies: ["A"],
+          },
+        });
+        await generateSchedule(client);
+        await client.callTool({
+          name: "cancel_flight",
+          arguments: { flight_number: "A" },
+        });
+        const s = await callStatus(client);
+        expect(s.constraints.dependency_blocking).toBe(true);
+        const b = s.blocked_flights.find((u) => u.flight_number === "B");
+        expect(b?.reason).toBe("dependency_cancelled");
+        expect(b?.blocking_flight_number).toBe("A");
+      } finally {
+        await cleanup();
+      }
+    }
+    // 4. dependency_unscheduled: B depends on HVY (no_compatible_runway).
+    {
+      const { client, cleanup } = await connectClient();
+      try {
+        await client.callTool({
+          name: "submit_flight",
+          arguments: {
+            flight_number: "HVY",
+            operation: "departure",
+            priority: "high",
+            min_runway_length_m: 9999,
+          },
+        });
+        await client.callTool({
+          name: "submit_flight",
+          arguments: {
+            flight_number: "B",
+            operation: "departure",
+            priority: "high",
+            dependencies: ["HVY"],
+          },
+        });
+        await generateSchedule(client);
+        const s = await callStatus(client);
+        // Both runway_blocking AND dependency_blocking flip in this scenario.
+        expect(s.constraints.runway_blocking).toBe(true);
+        expect(s.constraints.dependency_blocking).toBe(true);
+        const b = s.blocked_flights.find((u) => u.flight_number === "B");
+        expect(b?.reason).toBe("dependency_unscheduled");
+        expect(b?.blocking_flight_number).toBe("HVY");
+      } finally {
+        await cleanup();
+      }
+    }
+  });
+
+  it("returns an error envelope for an invalid IANA timezone (no silent UTC fallback)", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      const resp = await client.callTool({
+        name: "get_airport_status",
+        arguments: { timezone: "Mars/Olympus" },
+      });
+      expect(resp.isError).toBe(true);
+      const errors = parseEnvelopeErrors(resp);
+      expect(errors[0]?.reason).toBe("invalid_input");
+      expect(errors[0]?.field).toBe("timezone");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("rejects unknown input fields via the strict schema", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      const resp = await client.callTool({
+        name: "get_airport_status",
+        arguments: { unexpected: 1 } as Record<string, unknown>,
+      });
+      expect(resp.isError).toBe(true);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("does not recompute on repeated calls — wire bytes identical AND state.schedule reference unchanged", async () => {
+    const { client, state, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "A1", operation: "arrival", priority: "high" },
+      });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "B1", operation: "departure", priority: "medium" },
+      });
+      await generateSchedule(client);
+
+      // Capture the snapshot reference BEFORE the status calls — a recomputation
+      // would install a new snapshot via `replaceSchedule` and break this check.
+      const beforeRef = state.schedule;
+      expect(beforeRef).not.toBeNull();
+
+      const r1 = await client.callTool({
+        name: "get_airport_status",
+        arguments: {},
+      });
+      const r2 = await client.callTool({
+        name: "get_airport_status",
+        arguments: {},
+      });
+
+      // Strongest evidence: the stored snapshot is the same object after both calls.
+      expect(state.schedule).toBe(beforeRef);
+
+      // Raw wire bytes are byte-identical (not just stringify-of-structuredContent).
+      const text1 = r1.content?.[0]?.text;
+      const text2 = r2.content?.[0]?.text;
+      expect(typeof text1).toBe("string");
+      expect(text2).toBe(text1);
+
+      // structuredContent matches the wire text exactly.
+      expect(JSON.stringify(r2.structuredContent)).toBe(JSON.stringify(r1.structuredContent));
+
+      // And no schedule fields drifted between calls — the snapshot must be untouched.
+      const timeline1 = await readJson<{ operations: ScheduleEntryShape[] }>(
+        client,
+        "atc://timeline",
+      );
+      await callStatus(client);
+      const timeline2 = await readJson<{ operations: ScheduleEntryShape[] }>(
+        client,
+        "atc://timeline",
+      );
+      expect(JSON.stringify(timeline2)).toBe(JSON.stringify(timeline1));
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+describe("brief scenario — Heavy Hauler", () => {
+  it("heavy is unscheduled with no_compatible_runway, valid flights scheduled, constraints.runway_blocking true", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      // 1. Reset.
+      const reset = await client.callTool({ name: "reset_state", arguments: {} });
+      expect(reset.isError).toBeFalsy();
+
+      // 2. Submit one impossibly-heavy departure + two normal flights.
+      const heavy = await client.callTool({
+        name: "submit_flight",
+        arguments: {
+          flight_number: "HVY1",
+          operation: "departure",
+          priority: "high",
+          min_runway_length_m: 9999,
+        },
+      });
+      expect(heavy.isError).toBeFalsy();
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "OK1", operation: "arrival", priority: "medium" },
+      });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "OK2", operation: "departure", priority: "low" },
+      });
+
+      // 3. Generate the schedule.
+      const snap = await generateSchedule(client);
+      expect(snap.scheduled.map((e) => e.flight_number).sort()).toEqual(["OK1", "OK2"]);
+      const heavyUnscheduled = snap.unscheduled.find((e) => e.flight_number === "HVY1");
+      expect(heavyUnscheduled?.reason).toBe("no_compatible_runway");
+
+      // 4. Call get_airport_status.
+      const status = await callStatus(client);
+
+      // Assertions per the brief:
+      // - Heavy is unscheduled with reason no_compatible_runway.
+      const heavyBlocked = status.blocked_flights.find((u) => u.flight_number === "HVY1");
+      expect(heavyBlocked?.reason).toBe("no_compatible_runway");
+
+      // - Valid flights are scheduled (state counts reflect this).
+      expect(status.flights.by_state.scheduled).toBe(2);
+      expect(status.flights.by_state.unscheduled).toBe(1);
+
+      // - constraints.runway_blocking is true.
+      expect(status.constraints.runway_blocking).toBe(true);
+      expect(status.constraints.any_blocked).toBe(true);
+      expect(status.constraints.horizon_blocking).toBe(false);
+      expect(status.constraints.dependency_blocking).toBe(false);
+
+      // Status confirms cross-resource view: at least one runway saw an op.
+      const totalOps = status.resources.runways.reduce(
+        (s, r) => s + r.operations_count,
+        0,
+      );
+      expect(totalOps).toBe(2);
     } finally {
       await cleanup();
     }

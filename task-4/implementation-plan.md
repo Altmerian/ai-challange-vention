@@ -13,7 +13,7 @@ Repo: [Altmerian/ai-challenge-vention](https://github.com/Altmerian/ai-challenge
 | 3 | `generate_schedule` MVP + `atc://runways` + `atc://timeline` + `TimezoneFormatter` + Morning Rush | AFK | #10 | [#11](https://github.com/Altmerian/ai-challenge-vention/issues/11) | - [x] |
 | 4 | Dependencies in `Scheduler` + Connecting Flight | AFK | #11 | [#12](https://github.com/Altmerian/ai-challenge-vention/issues/12) | - [x] |
 | 5 | `cancel_flight` with auto-regen cascade | AFK | #12 | [#13](https://github.com/Altmerian/ai-challenge-vention/issues/13) | - [x] |
-| 6 | `get_airport_status` + Heavy Hauler | AFK | #11, #12 | [#14](https://github.com/Altmerian/ai-challenge-vention/issues/14) | - [ ] |
+| 6 | `get_airport_status` + Heavy Hauler | AFK | #11, #12 | [#14](https://github.com/Altmerian/ai-challenge-vention/issues/14) | - [x] |
 | 7 | `analyze_bottleneck` (CPM critical path) | AFK | #12 | [#15](https://github.com/Altmerian/ai-challenge-vention/issues/15) | - [ ] |
 | 8 | Determinism + extra scenarios + Inspector verification | AFK | #13, #14, #15 | [#16](https://github.com/Altmerian/ai-challenge-vention/issues/16) | - [ ] |
 | 9 | `README.md` + `report.md` | AFK | #16 | [#17](https://github.com/Altmerian/ai-challenge-vention/issues/17) | - [ ] |
@@ -101,19 +101,19 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 
 ### Slice 6 — `get_airport_status` + Heavy Hauler · [#14](https://github.com/Altmerian/ai-challenge-vention/issues/14)
 
-- [ ] `get_airport_status` returns the PRD `AirportStatus` shape **exactly** — no extras (no saturation, no ground_crew in resources, no convenience totals)
-- [ ] `flights.by_state` / `flights.by_operation` counts correct
-- [ ] `resources.runways[]` includes `busy_minutes` with trailing separation buffer; `resources.gates[]` analogous
-- [ ] `constraints.runway_blocking` ⇔ any blocked flight has reason `no_compatible_runway`
-- [ ] `constraints.horizon_blocking` ⇔ any has reason `horizon_exceeded`
-- [ ] `constraints.dependency_blocking` ⇔ any has a `dependency_*` reason
-- [ ] `constraints.any_blocked` = OR of the three
-- [ ] `blocked_flights` mirrors current schedule's `unscheduled` entries
-- [ ] `schedule_completion` is `null` iff `generate_schedule` has never run in this process. An all-unscheduled pass returns `{ schedule_start_at, makespan_min: 0, completion_at: schedule_start_at }` — **not** `null`.
-- [ ] `schedule_start_at` / `completion_at` are UTC ISO-8601 instants (per ADR-0002); client-tz rendering happens via `start_at` / `end_at` on `ScheduleEntry`, not here
-- [ ] Status read does not recompute (assert offsets byte-identical across repeated calls)
-- [ ] Unit tests: empty queue, post-submission pre-schedule, mixed scheduled/unscheduled, `busy_minutes` math, each `constraints` boolean flip
-- [ ] **Heavy Hauler** brief scenario passes via `InMemoryTransport` and Inspector CLI walkthrough
+- [x] `get_airport_status` returns the PRD `AirportStatus` shape **exactly** — no extras (no saturation, no ground_crew in resources, no convenience totals)
+- [x] `flights.by_state` / `flights.by_operation` counts correct
+- [x] `resources.runways[]` includes `busy_minutes` with trailing separation buffer; `resources.gates[]` analogous
+- [x] `constraints.runway_blocking` ⇔ any blocked flight has reason `no_compatible_runway`
+- [x] `constraints.horizon_blocking` ⇔ any has reason `horizon_exceeded`
+- [x] `constraints.dependency_blocking` ⇔ any has a `dependency_*` reason
+- [x] `constraints.any_blocked` = OR of the three
+- [x] `blocked_flights` mirrors current schedule's `unscheduled` entries
+- [x] `schedule_completion` is `null` iff `generate_schedule` has never run in this process. An all-unscheduled pass returns `{ schedule_start_at, makespan_min: 0, completion_at: schedule_start_at }` — **not** `null`.
+- [x] `schedule_start_at` / `completion_at` are UTC ISO-8601 instants (per ADR-0002); client-tz rendering happens via `start_at` / `end_at` on `ScheduleEntry`, not here
+- [x] Status read does not recompute (assert offsets byte-identical across repeated calls)
+- [x] Unit tests: empty queue, post-submission pre-schedule, mixed scheduled/unscheduled, `busy_minutes` math, each `constraints` boolean flip
+- [x] **Heavy Hauler** brief scenario passes via `InMemoryTransport` and Inspector CLI walkthrough
 
 ### Slice 7 — `analyze_bottleneck` (CPM critical path) · [#15](https://github.com/Altmerian/ai-challenge-vention/issues/15)
 
@@ -163,16 +163,17 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 
 > After closing a slice, record durable cross-slice patterns or footguns that future agents will hit *regardless of which slice they pick* under **Persistent gotchas**, and *only next-slice-actionable* deferrals or reuse-or-roll-your-own choices under **Handoff**. Delete superseded bullets — this is a glanceable view, not an audit log.
 
-### Persistent gotchas (from slices 1–5, still apply)
+### Persistent gotchas (from slices 1–6, still apply)
 
 - **Every new tool gets `z.strictObject(...)` as its `inputSchema`.** Plain `z.object` advertises `additionalProperties: true` and silently accepts unknown fields on the wire.
 - **`exactOptionalPropertyTypes: true` is on.** Don't assign `x: undefined` to optional output keys — conditionally spread (`...(x !== undefined ? { x } : {})`) so JSON serialization omits the key cleanly.
 - **Never hand-roll an error envelope — always go through `errorEnvelope()`.** It deliberately omits `structuredContent`: the SDK client validates `structuredContent` against the tool's *success* output schema whenever present, regardless of `isError`, and any error-shaped object trips the validator. Vitest doesn't expose this because it skips `listTools()`; Inspector does.
 - **Two validation paths by design — don't harmonize.** The SDK auto-validates input against `inputSchema` and emits `isError: true` with text-formatted zod issues. `errorEnvelope` carries `{errors: ValidationIssue[]}` JSON for business-rule failures only. Routing schema errors through our envelope would force dropping `inputSchema` from `registerTool` and losing the strict-schema advertisement in `tools/list`. Catalogue accuracy beats envelope-format uniformity.
-- **Inspector CLI is one-shot per process.** For cross-call scenarios drive the freshly-built server via the SDK's `StdioClientTransport` from a Node script — see `.verification/slice-5-stdio-driver.mjs` for the current pattern. Slice 8 collapses both paths into a single `npm run verify:inspector` command.
+- **Inspector CLI is one-shot per process.** For cross-call scenarios drive the freshly-built server via the SDK's `StdioClientTransport` from a Node script — see `.verification/slice-6-stdio-driver.mjs` for the current pattern. Slice 8 collapses both paths into a single `npm run verify:inspector` command.
 - **All IANA timezone parsing goes through `isValidIanaTimezone` in `config.ts`.** `Intl.DateTimeFormat` silently canonicalizes case-folded names (`Asia/Kolkata` → `Asia/Calcutta`); the helper enforces the exact round-trip. Reuse it from any per-call `timezone` argument — don't re-derive the check.
-- **`Scheduler` and `TimezoneFormatter` are pure — keep them clock-free and env-free.** `runSchedulingPass` takes `{ now, timezone }` as an explicit option; the handler injects `new Date()` and the resolved tz. Tests pin both for deterministic assertions.
-- **Reuse the zod schemas exported from `mcp-server.ts`** (`ScheduleSnapshotSchema` / `ScheduleEntrySchema` / `UnscheduledEntrySchema`) when wiring `cancel_flight`, `get_airport_status`, or `analyze_bottleneck`. Re-deriving the shape risks catalogue drift.
+- **`Scheduler`, `TimezoneFormatter`, and `airport-status` are pure — keep them clock-free and env-free.** `runSchedulingPass` takes `{ now, timezone }` as an explicit option; the handler injects `new Date()` and the resolved tz. `buildAirportStatus(state)` is a pure projection of `state.queue` / `state.schedule` / `state.config`. Tests pin both for deterministic assertions.
+- **Reuse the zod schemas exported from `mcp-server.ts`** (`ScheduleSnapshotSchema` / `ScheduleEntrySchema` / `UnscheduledEntrySchema`) when wiring `analyze_bottleneck`. Re-deriving the shape risks catalogue drift.
+- **Reuse the helpers in `airport-status.ts`** (`computeRunwayBusyMinutes`, `computeUtilizationPct`, `addMinutesToUtcMinuteIso`, `buildScheduleCompletion`) instead of re-deriving the trailing-separation / one-decimal / UTC-minute math. `atc://runways` and `get_airport_status` already share them; `analyze_bottleneck` should too when it needs UTC-instant arithmetic.
 - **`ValidationReason` in `error-envelope.ts` is intentionally narrow** (`invalid_input` · `self_dependency` · `duplicate_flight_number`). Schedule-time reasons (`no_compatible_runway`, `horizon_exceeded`, `dependency_*`) live on `UnscheduledEntry`, not in this envelope — `invalid_input` is what `generate_schedule` returns for an unknown IANA timezone, not `no_compatible_runway`.
 - **`replaceSchedule(snapshot)` is the single state-mutation point after a pass.** It installs the snapshot AND flips every non-cancelled `Flight.state` in lockstep, then rebuilds the flight-number index. Adding a sibling setter that touches `Flight.state` independently would let queue state and schedule state drift; extend `replaceSchedule` instead.
 - **The `dependency_*` reason taxonomy is layered, not OR'd.** Direct missing/cancelled preds → `dependency_missing` / `dependency_cancelled` with `blocking_flight_number` = the offending pred. Cycle members → `dependency_cycle` (no `blocking_flight_number`; `detail` lists members). Everything else downstream — transitive descendants of any of the above, plus descendants of `no_compatible_runway` / `horizon_exceeded` flights — → `dependency_unscheduled` with `blocking_flight_number` = first unscheduled pred in `dependencies` order. The cascade only points one hop back.
@@ -181,15 +182,19 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 - **Stability invariant is narrow, not global.** Cancelling a flight that has no dependents *and* whose runway/gate slot is uncontested leaves all other offsets byte-identical. The wider "any cancel leaves unrelated flights stable" claim is NOT an invariant of greedy scheduling — a freed slot can be reclaimed earlier by a contested lower-priority flight. Test it only via a deliberately uncontested fixture (over-provisioned resources, single dependent-free leaf).
 - **`flight_number` uniqueness survives cancellation.** Re-submitting a cancelled `flight_number` is still rejected by `addFlight`'s duplicate check (it iterates the full queue, including cancelled). No extra work needed in any future slice — just don't regress it.
 - **To build a pre-pass scheduled baseline in tests, call `runSchedulingPass(state.queue, state.config, options)` + `state.replaceSchedule(baseline)` explicitly.** `AirportState.cancelFlight` only runs a pass on the cancel transition itself, not on submission — tests that need to prove "X was scheduled before the cancel" must establish that state themselves.
+- **"Status read does not recompute" is best asserted with reference equality on `state.schedule`** — JSON-stringify comparisons are necessary but not sufficient (a same-minute rerun could produce byte-identical output yet break the contract). Capture `state.schedule` before the read, assert `state.schedule === beforeRef` after. The slice-6 driver also compares raw `content[0].text` bytes — go through both layers (wire + state) for read-side claims.
+- **Gate `busy_minutes` excludes the trailing buffer; runway `busy_minutes` includes it.** PRD-mandated asymmetry: gate turnaround already covers the gap before the next gate op, while runway separation is a real third constraint. Don't "fix" the gate math by adding a trailing buffer.
 
-### Handoff to slice 6
+### Handoff to slice 7
 
-- **`get_airport_status` is a pure read-side feature — no scheduler changes.** Read `state.queue`, `state.schedule`, and `state.config`. The shape must match the PRD `AirportStatus` definition **exactly** — no saturation field, no ground_crew in `resources`, no convenience totals. Catalogue drift is the failure mode the slice-3/4 strict-schema gotcha was written to prevent.
-- **`resources.runways[].busy_minutes` math is already implemented in `buildRunwaysResource` in `mcp-server.ts` (slice 3).** Extract it to a shared helper (or import from `mcp-server.ts`) for `get_airport_status` — don't re-derive the trailing-buffer logic. `resources.gates[].busy_minutes` is the sum of `gate_window` durations with **no** trailing buffer (gate turnaround already covers it — per PRD `AirportStatus` notes).
-- **`schedule_completion` is `null` iff `state.schedule === null`** (no `generate_schedule` *or* `cancel_flight` has ever run in this process — both install a snapshot). After an all-unscheduled pass, return `{ schedule_start_at, makespan_min: 0, completion_at: schedule_start_at }`. `schedule_start_at` / `completion_at` are **UTC** ISO-8601 instants per ADR-0002; client-tz rendering is the job of `start_at`/`end_at` on `ScheduleEntry`, not this tool.
-- **`constraints.*` are scans over `state.schedule?.unscheduled` reasons** — `runway_blocking` ⇔ any `no_compatible_runway`, `horizon_blocking` ⇔ any `horizon_exceeded`, `dependency_blocking` ⇔ any `dependency_*` reason (all five — `dependency_cycle`, `_missing`, `_cancelled`, `_unscheduled`). `any_blocked` = OR of the three.
-- **Heavy Hauler scenario** is the slice's brief walkthrough — see `AGENTS.md` § "Scenario walkthroughs". Submit one high-priority departure with `min_runway_length_m` > every configured runway plus one or more valid flights → `generate_schedule` → call `get_airport_status`. Assert heavy is `unscheduled` reason `no_compatible_runway`, valid flights scheduled, `constraints.runway_blocking: true`. Reuse the slice-5 stdio driver pattern (`.verification/slice-5-stdio-driver.mjs`).
-- **Status reads do not recompute** — assert byte-identical payloads across repeated calls in the integration tests, mirroring how `atc://queue`/`atc://runways` already do (slice 3 set the precedent).
+- **`BottleneckAnalyzer` is pure `(schedule, queue) → BottleneckReport` — no scheduler changes, no I/O, no clock.** Mirror the slice-6 split: put it in `src/bottleneck.ts` with a small dedicated test file (`tests/bottleneck.test.ts`) and only register it from `mcp-server.ts`. Don't grow `mcp-server.ts` with domain logic.
+- **Chain weight is elapsed minutes (`last.end_offset_min − first.start_offset_min`), not node count** — see ADR-0003 and PRD §17. Tiebreakers in strict order: elapsed → node count → earliest first-flight start → lex flight-number sequence. A one-node path is **not** a chain (returns `bottleneck_exists: false` with a `note`).
+- **Restrict the DAG to `scheduled` flights only.** Exclude `cancelled`, `unscheduled` (any reason), and predecessors that didn't make it into the snapshot. The cascade rules from slice 4 already guarantee a clean cut.
+- **`cumulative_wait_min` is intentionally broad** — `total_elapsed_min − cumulative_operation_min` folds in dependency-buffer **and** resource-contention gaps. The PRD note (§ Shared output shapes / BottleneckReport) explicitly says splitting them is not tractable without re-running the scheduler.
+- **For UTC-instant arithmetic on `start_at`/`end_at` of the chain endpoints, reuse `addMinutesToUtcMinuteIso` from `airport-status.ts`** — that's exactly what slice 6 added it for. Don't write a third copy of the minute-roll math. For client-tz rendering use `formatOffsetInZone` from `timezone-formatter.ts`.
+- **`InvalidIanaTimezone` returns `errorEnvelope` with reason `invalid_input`, field `timezone`** — the existing pattern from `generate_schedule` / `cancel_flight` / `get_airport_status`. Plug in by copy of the timezone-check block from any of those handlers.
+- **`analyze_bottleneck` reads `state.schedule` and `state.queue` only — it must NOT recompute.** Same reference-equality + wire-byte assertion pattern as slice 6 applies; the slice-7 stdio driver should follow `.verification/slice-6-stdio-driver.mjs` as the template.
+- **Inspector verification adds one new check from `AGENTS.md`**: `analyze_bottleneck` on the Connecting Flight schedule returns `bottleneck_exists: true` with the expected 2-flight chain (A → B). The full set of brief scenarios + cancel cascade + Heavy Hauler must continue to pass.
 
 ## Sync convention
 

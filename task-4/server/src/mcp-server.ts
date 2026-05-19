@@ -2,8 +2,9 @@
  * Constructs the MCP server surface — registers tools and resources against an
  * `AirportState`. Slice 3 added `generate_schedule`, the `atc://runways` and
  * `atc://timeline` resources, and wired the deep `Scheduler` + `TimezoneFormatter`
- * modules in. Slice 5 adds `cancel_flight` (with auto-regen cascade). Later
- * slices add `get_airport_status` and `analyze_bottleneck`.
+ * modules in. Slice 5 adds `cancel_flight` (with auto-regen cascade). Slice 6
+ * adds `get_airport_status` (pure read over the current snapshot). `analyze_bottleneck`
+ * follows in slice 7.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -14,6 +15,11 @@ import {
   type Flight,
   type ScheduleSnapshot,
 } from "./airport-state.js";
+import {
+  buildAirportStatus,
+  computeRunwayBusyMinutes,
+  computeUtilizationPct,
+} from "./airport-status.js";
 import { errorEnvelope, type ValidationIssue } from "./error-envelope.js";
 import { isValidIanaTimezone } from "./config.js";
 import {
@@ -120,6 +126,58 @@ const CancelFlightOutputShape = {
   cancelled: z.literal(true),
   flight_number: z.string(),
   schedule: ScheduleSnapshotSchema,
+} as const;
+
+const GetAirportStatusInputSchema = z.strictObject({
+  timezone: z.string().min(1).optional(),
+});
+
+const GetAirportStatusOutputShape = {
+  flights: z.object({
+    by_state: z.object({
+      submitted: z.number().int().nonnegative(),
+      scheduled: z.number().int().nonnegative(),
+      unscheduled: z.number().int().nonnegative(),
+      cancelled: z.number().int().nonnegative(),
+    }),
+    by_operation: z.object({
+      arrival: z.number().int().nonnegative(),
+      departure: z.number().int().nonnegative(),
+    }),
+  }),
+  resources: z.object({
+    runways: z.array(
+      z.object({
+        runway_id: z.string(),
+        length_m: z.number().int().nonnegative(),
+        operations_count: z.number().int().nonnegative(),
+        busy_minutes: z.number().int().nonnegative(),
+        utilization_pct: z.number().nonnegative(),
+      }),
+    ),
+    gates: z.array(
+      z.object({
+        gate_id: z.string(),
+        operations_count: z.number().int().nonnegative(),
+        busy_minutes: z.number().int().nonnegative(),
+        utilization_pct: z.number().nonnegative(),
+      }),
+    ),
+  }),
+  constraints: z.object({
+    runway_blocking: z.boolean(),
+    horizon_blocking: z.boolean(),
+    dependency_blocking: z.boolean(),
+    any_blocked: z.boolean(),
+  }),
+  blocked_flights: z.array(UnscheduledEntrySchema),
+  schedule_completion: z
+    .object({
+      schedule_start_at: z.string(),
+      makespan_min: z.number().int().nonnegative(),
+      completion_at: z.string(),
+    })
+    .nullable(),
 } as const;
 
 const QUEUE_URI = "atc://queue";
@@ -320,6 +378,34 @@ export function createMcpServer(state: AirportState): McpServer {
     },
   );
 
+  server.registerTool(
+    "get_airport_status",
+    {
+      title: "Inspect the airport status",
+      description:
+        "Read-only snapshot of the current queue and most recent schedule: flight counts by state and operation, per-runway and per-gate utilization, resource constraint indicators, blocked flights, and schedule completion timing. Does not recompute — the schedule is whatever the most recent `generate_schedule` or `cancel_flight` left in place.",
+      inputSchema: GetAirportStatusInputSchema,
+      outputSchema: GetAirportStatusOutputShape,
+    },
+    async (args) => {
+      const timezone = args.timezone ?? state.config.defaultTimezone;
+      if (!isValidIanaTimezone(timezone)) {
+        return errorEnvelope([
+          {
+            reason: "invalid_input",
+            message: `unknown IANA timezone "${timezone}"`,
+            field: "timezone",
+          },
+        ]);
+      }
+      const structuredContent = buildAirportStatus(state);
+      return {
+        structuredContent,
+        content: [{ type: "text", text: JSON.stringify(structuredContent) }],
+      };
+    },
+  );
+
   server.registerResource(
     "queue",
     QUEUE_URI,
@@ -496,15 +582,8 @@ function buildRunwaysResource(state: AirportState): { runways: RunwayResource[] 
         (a, b) => a.runway_window.start_offset_min - b.runway_window.start_offset_min,
       );
 
-    let busyMinutes = 0;
-    for (let j = 0; j < byRunwayWindow.length; j++) {
-      const op = byRunwayWindow[j]!;
-      busyMinutes += op.runway_window.end_offset_min - op.runway_window.start_offset_min;
-      const nextOp = j + 1 < byRunwayWindow.length ? byRunwayWindow[j + 1]! : null;
-      busyMinutes += separationFor(op.operation, nextOp?.operation ?? null, state.config);
-    }
-    const utilizationPct =
-      horizon > 0 ? Math.round((busyMinutes / horizon) * 1000) / 10 : 0;
+    const busyMinutes = computeRunwayBusyMinutes(byRunwayWindow, state.config);
+    const utilizationPct = computeUtilizationPct(busyMinutes, horizon);
 
     const availableWindows = computeAvailableWindows(byRunwayWindow, horizon, state.config);
     const nextAvailable =
@@ -552,3 +631,4 @@ function computeAvailableWindows(
   }
   return windows;
 }
+
