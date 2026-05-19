@@ -13,9 +13,11 @@
   "scripts": {
     "build": "tsc && chmod +x dist/index.js",
     "start": "node dist/index.js",
-    "test": "vitest run",
+    "test": "vitest run && npm run verify:inspector",
+    "test:unit": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:inspector": "npm run build && node .verification/verify-inspector.mjs dist/index.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

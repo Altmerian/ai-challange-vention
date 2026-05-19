@@ -15,7 +15,7 @@ Repo: [Altmerian/ai-challenge-vention](https://github.com/Altmerian/ai-challenge
 | 5 | `cancel_flight` with auto-regen cascade | AFK | #12 | [#13](https://github.com/Altmerian/ai-challenge-vention/issues/13) | - [x] |
 | 6 | `get_airport_status` + Heavy Hauler | AFK | #11, #12 | [#14](https://github.com/Altmerian/ai-challenge-vention/issues/14) | - [x] |
 | 7 | `analyze_bottleneck` (CPM critical path) | AFK | #12 | [#15](https://github.com/Altmerian/ai-challenge-vention/issues/15) | - [x] |
-| 8 | Determinism + extra scenarios + Inspector verification | AFK | #13, #14, #15 | [#16](https://github.com/Altmerian/ai-challenge-vention/issues/16) | - [ ] |
+| 8 | Determinism + extra scenarios + Inspector verification | AFK | #13, #14, #15 | [#16](https://github.com/Altmerian/ai-challenge-vention/issues/16) | - [x] |
 | 9 | `README.md` + `report.md` | AFK | #16 | [#17](https://github.com/Altmerian/ai-challenge-vention/issues/17) | - [ ] |
 
 ## Dependency graph
@@ -132,23 +132,23 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 
 ### Slice 8 — Determinism + extra scenarios + Inspector verification · [#16](https://github.com/Altmerian/ai-challenge-vention/issues/16)
 
-- [ ] Determinism harness compares `start_offset_min` / `end_offset_min` / `runway_id` / `gate_id` / `unscheduled[*].reason` across runs; wall-clock fields excluded
-- [ ] Ten extra scenario tests via `InMemoryTransport`:
-  1. Dependency cycle (`A→B→A`)
-  2. Forward reference resolved (`B` submitted before `A`)
-  3. Forward reference unresolved (`dependency_missing` with `blocking_flight_number`)
-  4. Cancellation cascade through `A→B→C` without explicit `generate_schedule`
-  5. Reset state — counts, empty queue, next `submission_index` is 0
-  6. Duplicate flight number after cancel — uniqueness holds across `cancelled`
-  7. Self-dependency rejected at submission
-  8. Heavy Hauler with valid mix — utilization non-zero, `runway_blocking: true`
-  9. Bottleneck trivial — `bottleneck_exists: false`
-  10. Bottleneck 3-chain — `chain_length: 3`, buffer math, elapsed = `C.end − A.start`
-- [ ] Inspector CLI driver (`npm run verify:inspector`) issues protocol checks + 3 brief scenarios + additional verifications from `AGENTS.md` "What to verify via Inspector"; exits non-zero on any failed assertion
-- [ ] Driver verifies the **exact** tool catalogue and resource catalogue (no extras, none missing)
-- [ ] Driver verifies each tool's input schema rejects at least one malformed input
-- [ ] Single command (`npm test` or equivalent) runs unit + integration + Inspector driver; CI is green
-- [ ] No partial verification — any failure means fix and re-run the full set
+- [x] Determinism harness compares `start_offset_min` / `end_offset_min` / `runway_id` / `gate_id` / `unscheduled[*].reason` across runs; wall-clock fields excluded (projection also covers `operation`, `priority`, `predecessors`, `runway_window`, `gate_window`, `blocking_flight_number` — every input-determined field, since the AC value is a floor, not a cap)
+- [x] Ten extra scenario tests via `InMemoryTransport` (eight deduplicated against existing tests in `mcp-server.integration.test.ts` per the slice-7→slice-8 handoff; two net-new in `tests/slice-8-extras.integration.test.ts`):
+  1. Dependency cycle (`A→B→A`) — `mcp-server.integration.test.ts` (Connecting Flight describe)
+  2. Forward reference resolved (`B` submitted before `A`) — `slice-8-extras.integration.test.ts`
+  3. Forward reference unresolved (`dependency_missing` with `blocking_flight_number`) — `mcp-server.integration.test.ts` (GHOST orphan)
+  4. Cancellation cascade through `A→B→C` without explicit `generate_schedule` — `mcp-server.integration.test.ts` (cancel_flight transitive)
+  5. Reset state — counts, empty queue, next `submission_index` is 0 — `mcp-server.integration.test.ts`
+  6. Duplicate flight number after cancel — `mcp-server.integration.test.ts` (cancel_flight describe)
+  7. Self-dependency rejected at submission — `mcp-server.integration.test.ts` (submit_flight describe)
+  8. Heavy Hauler with valid mix — `mcp-server.integration.test.ts` (brief scenario)
+  9. Bottleneck trivial — `mcp-server.integration.test.ts` (analyze_bottleneck describe)
+  10. Bottleneck 3-chain — `slice-8-extras.integration.test.ts`
+- [x] Inspector CLI driver (`npm run verify:inspector`) issues protocol checks + 3 brief scenarios + additional verifications from `AGENTS.md` "What to verify via Inspector"; exits non-zero on any failed assertion
+- [x] Driver verifies the **exact** tool catalogue and resource catalogue (no extras, none missing)
+- [x] Driver verifies each tool's input schema rejects at least one malformed input
+- [x] Single command (`npm test`) runs unit + integration + Inspector driver (`vitest run && npm run verify:inspector`); `verify:inspector` builds dist first so `npm test` cannot pass against a stale binary
+- [x] No partial verification — any failure means fix and re-run the full set
 
 ### Slice 9 — `README.md` + `report.md` · [#17](https://github.com/Altmerian/ai-challenge-vention/issues/17)
 
@@ -163,13 +163,13 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 
 > After closing a slice, record durable cross-slice patterns or footguns that future agents will hit *regardless of which slice they pick* under **Persistent gotchas**, and *only next-slice-actionable* deferrals or reuse-or-roll-your-own choices under **Handoff**. Delete superseded bullets — this is a glanceable view, not an audit log.
 
-### Persistent gotchas (from slices 1–7, still apply)
+### Persistent gotchas (from slices 1–8, still apply)
 
 - **Every new tool gets `z.strictObject(...)` as its `inputSchema`.** Plain `z.object` advertises `additionalProperties: true` and silently accepts unknown fields on the wire.
 - **`exactOptionalPropertyTypes: true` is on.** Don't assign `x: undefined` to optional output keys — conditionally spread (`...(x !== undefined ? { x } : {})`) so JSON serialization omits the key cleanly.
 - **Never hand-roll an error envelope — always go through `errorEnvelope()`.** It deliberately omits `structuredContent`: the SDK client validates `structuredContent` against the tool's *success* output schema whenever present, regardless of `isError`, and any error-shaped object trips the validator. Vitest doesn't expose this because it skips `listTools()`; Inspector does.
 - **Two validation paths by design — don't harmonize.** The SDK auto-validates input against `inputSchema` and emits `isError: true` with text-formatted zod issues. `errorEnvelope` carries `{errors: ValidationIssue[]}` JSON for business-rule failures only. Routing schema errors through our envelope would force dropping `inputSchema` from `registerTool` and losing the strict-schema advertisement in `tools/list`. Catalogue accuracy beats envelope-format uniformity.
-- **Inspector CLI is one-shot per process.** For cross-call scenarios drive the freshly-built server via the SDK's `StdioClientTransport` from a Node script — see `.verification/slice-6-stdio-driver.mjs` for the current pattern. Slice 8 collapses both paths into a single `npm run verify:inspector` command.
+- **Inspector CLI is one-shot per process.** For cross-call scenarios drive the freshly-built server via the SDK's `StdioClientTransport` from a Node script — `.verification/verify-inspector.mjs` is the canonical driver and `npm run verify:inspector` is the single entry point. `.verification/*` is gitignored *except* for `verify-inspector.mjs`; the per-slice `slice-N-stdio-driver.mjs` files remain local-only historical logs.
 - **All IANA timezone parsing goes through `isValidIanaTimezone` in `config.ts`.** `Intl.DateTimeFormat` silently canonicalizes case-folded names (`Asia/Kolkata` → `Asia/Calcutta`); the helper enforces the exact round-trip. Reuse it from any per-call `timezone` argument — don't re-derive the check.
 - **`Scheduler`, `TimezoneFormatter`, and `airport-status` are pure — keep them clock-free and env-free.** `runSchedulingPass` takes `{ now, timezone }` as an explicit option; the handler injects `new Date()` and the resolved tz. `buildAirportStatus(state)` is a pure projection of `state.queue` / `state.schedule` / `state.config`. Tests pin both for deterministic assertions.
 - **Reuse the helpers in `airport-status.ts`** (`computeRunwayBusyMinutes`, `computeUtilizationPct`, `addMinutesToUtcMinuteIso`, `buildScheduleCompletion`) instead of re-deriving the trailing-separation / one-decimal / UTC-minute math. `atc://runways` and `get_airport_status` already share them. New tools that need UTC-instant arithmetic should too.
@@ -186,13 +186,13 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 - **`BottleneckAnalyzer` keeps a single best chain per node.** Extension along an edge `u → v` is monotone w.r.t. the full tiebreak comparator (elapsed → node count → earliest start → lex), so the chain ending at `u` that wins on `bestEndingAt[u]` also wins after appending any common `v`. Don't track multiple chains per node — diamond/join cases work with one representative as long as the comparator is total. The diamond test in `tests/bottleneck.test.ts` pins this; the input `predecessors` order does NOT affect the result.
 - **`BottleneckAnalyzer` uses `start_offset_min` ascending as its topological order** — durations are strictly positive and the dependency buffer is ≥ 0, so any scheduled predecessor satisfies `u.start < u.end ≤ v.start` and falls earlier in the sort. Don't bolt on Kahn's algorithm.
 
-### Handoff to slice 8
+### Handoff to slice 9
 
-- **`tests/bottleneck.test.ts` and the slice-7 stdio driver already cover the bottleneck-trivial and bottleneck-3-chain extras.** When you build the determinism harness and the ten-extras integration suite, deduplicate against the already-passing tests — fold the missing extras (`reset_state` confirms next `submission_index = 0`, duplicate-after-cancel, self-dependency-rejected) onto the existing patterns instead of re-creating fixtures from scratch.
-- **Collapse the per-slice `.verification/slice-N-stdio-driver.mjs` files into one `npm run verify:inspector` entry point.** The slice-7 driver is the most recent template — it already runs the catalogue check, input validation, the three brief scenarios (Connecting Flight + Morning Rush + Heavy Hauler), determinism, and the `analyze_bottleneck` brief addition. Add the missing AGENTS.md extras (cancel-cascade-without-explicit-generate, reset-state) onto that shape rather than a fresh driver.
-- **Determinism comparison fields are `start_offset_min` / `end_offset_min` / `runway_id` / `gate_id` / `unscheduled[*].reason`.** Wall-clock fields (`generated_at`, `schedule_start_at`, `start_at`, `end_at`) are deliberately excluded — they reflect when the pass ran, not what the pass produced. Use a projection helper before diffing.
-- **CI green = `npm test` runs unit + integration + the new verify:inspector driver in one command.** The current `npm test` runs vitest only; extend the script or add a postscript to drive the stdio harness against `dist/index.js` so a single command catches both layers.
-- **No extras for slice 7 verification deferred** — the catalogue check, input validation, and the bottleneck-on-Connecting-Flight assertion are already in the slice-7 stdio driver. Just merge them, don't duplicate them.
+- **`README.md` is the only `task-4/` file the evaluator opens.** Keep it tight per `task-4/CLAUDE.md` "Documentation audience separation": install/build, env-var table, run + MCP-client connection, tool/resource reference — no design rationale, no internal terminology, no glossary. Anything that explains *why* belongs in `report.md` or stays in `PRD.md` / `docs/adr/`.
+- **The env-var table must match `Config` validators exactly.** Source of truth lives in `src/config.ts` (`REQUIRED_INT_VARS` + `parseRunwayLengths` + `parseTimezone`). Either derive the README rows from shared constants or assert via a test — the slice-9 AC requires "no drift".
+- **MCP-client connection examples should cover both Claude Desktop config and the Inspector CLI** — agents and evaluators will reach for one or the other. The canonical Inspector entry point is `npm run verify:inspector`; document it alongside `mcp-inspector --cli` for ad-hoc use.
+- **`report.md` is the human post-mortem.** Short intro pointing at `README.md` for usage, a plain-language scheduling-approach summary, tooling, what worked, what didn't. Link `PRD.md` / `CONTEXT.md` / `docs/adr/` / `AGENTS.md` as canonical agent artefacts — don't re-explain them.
+- **Public-channel hygiene applies to both files.** No absolute filesystem paths revealing usernames, no real `.env` values (use placeholders in env-var examples), no AI-assistant signature lines.
 
 ## Sync convention
 
