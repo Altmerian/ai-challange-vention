@@ -24,6 +24,8 @@ async function main(): Promise<void> {
   const server = createMcpServer(state);
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  // stdio transport reserves stdout for JSON-RPC frames — startup log goes to stderr.
+  process.stderr.write("Air Traffic Control MCP server started.\n");
 }
 
 main().catch((err: unknown) => {

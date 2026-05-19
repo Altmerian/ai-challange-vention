@@ -1,8 +1,21 @@
 {
   "mcpServers": {
-    "n8n-mcp": {
-      "type": "http",
-      "url": "https://api.n8n-mcp.com/mcp"
+    "atc": {
+      "command": "node",
+      "args": ["task-4/server/dist/index.js"],
+      "env": {
+        "ATC_RUNWAY_LENGTHS_M": "2500,3500",
+        "ATC_GATE_COUNT": "4",
+        "ATC_GROUND_CREW_COUNT": "2",
+        "ATC_LANDING_DURATION_MIN": "5",
+        "ATC_TAKEOFF_DURATION_MIN": "4",
+        "ATC_GATE_TURNAROUND_MIN": "30",
+        "ATC_SEPARATION_TAKEOFF_MIN": "2",
+        "ATC_SEPARATION_LANDING_MIN": "2",
+        "ATC_SEPARATION_MIXED_MIN": "3",
+        "ATC_DEPENDENCY_BUFFER_MIN": "15",
+        "ATC_MAX_HORIZON_MIN": "240"
+      }
     }
   }
 }
