@@ -3,8 +3,8 @@
  * `AirportState`. Slice 3 added `generate_schedule`, the `atc://runways` and
  * `atc://timeline` resources, and wired the deep `Scheduler` + `TimezoneFormatter`
  * modules in. Slice 5 adds `cancel_flight` (with auto-regen cascade). Slice 6
- * adds `get_airport_status` (pure read over the current snapshot). `analyze_bottleneck`
- * follows in slice 7.
+ * adds `get_airport_status` (pure read over the current snapshot). Slice 7 wires
+ * `analyze_bottleneck` over the same snapshot — pure projection, no recomputation.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -20,6 +20,7 @@ import {
   computeRunwayBusyMinutes,
   computeUtilizationPct,
 } from "./airport-status.js";
+import { analyzeBottleneck } from "./bottleneck.js";
 import { errorEnvelope, type ValidationIssue } from "./error-envelope.js";
 import { isValidIanaTimezone } from "./config.js";
 import {
@@ -131,6 +132,22 @@ const CancelFlightOutputShape = {
 const GetAirportStatusInputSchema = z.strictObject({
   timezone: z.string().min(1).optional(),
 });
+
+const AnalyzeBottleneckInputSchema = z.strictObject({
+  timezone: z.string().min(1).optional(),
+});
+
+const AnalyzeBottleneckOutputShape = {
+  bottleneck_exists: z.boolean(),
+  chain_length: z.number().int().nonnegative(),
+  total_elapsed_min: z.number().int().nonnegative(),
+  cumulative_operation_min: z.number().int().nonnegative(),
+  cumulative_wait_min: z.number().int().nonnegative(),
+  start_at: z.string().optional(),
+  end_at: z.string().optional(),
+  chain: z.array(ScheduleEntrySchema),
+  note: z.string().optional(),
+} as const;
 
 const GetAirportStatusOutputShape = {
   flights: z.object({
@@ -399,6 +416,48 @@ export function createMcpServer(state: AirportState): McpServer {
         ]);
       }
       const structuredContent = buildAirportStatus(state);
+      return {
+        structuredContent,
+        content: [{ type: "text", text: JSON.stringify(structuredContent) }],
+      };
+    },
+  );
+
+  server.registerTool(
+    "analyze_bottleneck",
+    {
+      title: "Analyse the schedule's critical-path bottleneck",
+      description:
+        "Read-only analysis of the current schedule: returns the longest dependency chain through scheduled flights measured in elapsed minutes (`last.end_offset_min - first.start_offset_min`), not by node count (ADR-0003). " +
+        "Tiebreaks: elapsed → node count → earliest first-flight start → lex flight-number sequence. " +
+        "Returns `bottleneck_exists: false` with a `note` when no scheduled inter-dependency edges exist. " +
+        "Does not recompute — the schedule is whatever the most recent `generate_schedule` or `cancel_flight` left in place.",
+      inputSchema: AnalyzeBottleneckInputSchema,
+      outputSchema: AnalyzeBottleneckOutputShape,
+    },
+    async (args) => {
+      const timezone = args.timezone ?? state.config.defaultTimezone;
+      if (!isValidIanaTimezone(timezone)) {
+        return errorEnvelope([
+          {
+            reason: "invalid_input",
+            message: `unknown IANA timezone "${timezone}"`,
+            field: "timezone",
+          },
+        ]);
+      }
+      const report = analyzeBottleneck(state.schedule, { timezone });
+      const structuredContent: Record<string, unknown> = {
+        bottleneck_exists: report.bottleneck_exists,
+        chain_length: report.chain_length,
+        total_elapsed_min: report.total_elapsed_min,
+        cumulative_operation_min: report.cumulative_operation_min,
+        cumulative_wait_min: report.cumulative_wait_min,
+        chain: report.chain,
+        ...(report.start_at !== undefined ? { start_at: report.start_at } : {}),
+        ...(report.end_at !== undefined ? { end_at: report.end_at } : {}),
+        ...(report.note !== undefined ? { note: report.note } : {}),
+      };
       return {
         structuredContent,
         content: [{ type: "text", text: JSON.stringify(structuredContent) }],

@@ -76,13 +76,14 @@ async function readQueue(client: Client): Promise<{
   return JSON.parse(first.text) as { flights: Array<Record<string, unknown>> };
 }
 
-describe("MCP server — catalogues (slice 6)", () => {
-  it("advertises exactly cancel_flight, generate_schedule, get_airport_status, reset_state, and submit_flight", async () => {
+describe("MCP server — catalogues (slice 7)", () => {
+  it("advertises exactly analyze_bottleneck, cancel_flight, generate_schedule, get_airport_status, reset_state, and submit_flight", async () => {
     const { client, cleanup } = await connectClient();
     try {
       const { tools } = await client.listTools();
       const names = tools.map((t) => t.name).sort();
       expect(names).toEqual([
+        "analyze_bottleneck",
         "cancel_flight",
         "generate_schedule",
         "get_airport_status",
@@ -1761,6 +1762,175 @@ describe("brief scenario — Heavy Hauler", () => {
         0,
       );
       expect(totalOps).toBe(2);
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+type BottleneckReportShape = {
+  bottleneck_exists: boolean;
+  chain_length: number;
+  total_elapsed_min: number;
+  cumulative_operation_min: number;
+  cumulative_wait_min: number;
+  start_at?: string;
+  end_at?: string;
+  chain: Array<{
+    flight_number: string;
+    start_offset_min: number;
+    end_offset_min: number;
+    predecessors: string[];
+  }>;
+  note?: string;
+};
+
+async function callBottleneck(
+  client: Client,
+  args: { timezone?: string } = {},
+): Promise<BottleneckReportShape> {
+  const resp = await client.callTool({ name: "analyze_bottleneck", arguments: args });
+  if (resp.isError) {
+    throw new Error(
+      `analyze_bottleneck returned isError: ${JSON.stringify(resp.content?.[0])}`,
+    );
+  }
+  return resp.structuredContent as BottleneckReportShape;
+}
+
+describe("analyze_bottleneck", () => {
+  it("returns the connecting-flight chain [A, B] with wait math driven by the dependency buffer", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "A", operation: "arrival", priority: "high" },
+      });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: {
+          flight_number: "B",
+          operation: "departure",
+          priority: "medium",
+          dependencies: ["A"],
+        },
+      });
+      const snap = await generateSchedule(client);
+      const aEntry = snap.scheduled.find((e) => e.flight_number === "A")!;
+      const bEntry = snap.scheduled.find((e) => e.flight_number === "B")!;
+
+      const report = await callBottleneck(client);
+      expect(report.bottleneck_exists).toBe(true);
+      expect(report.chain_length).toBe(2);
+      expect(report.chain.map((e) => e.flight_number)).toEqual(["A", "B"]);
+
+      const expectedElapsed = bEntry.end_offset_min - aEntry.start_offset_min;
+      const expectedOps =
+        aEntry.end_offset_min -
+        aEntry.start_offset_min +
+        (bEntry.end_offset_min - bEntry.start_offset_min);
+      expect(report.total_elapsed_min).toBe(expectedElapsed);
+      expect(report.cumulative_operation_min).toBe(expectedOps);
+      expect(report.cumulative_wait_min).toBe(expectedElapsed - expectedOps);
+      // Dependency buffer (15 in test config) is the only gap on an uncontested A→B.
+      expect(report.cumulative_wait_min).toBe(15);
+      expect(report.start_at).toBeDefined();
+      expect(report.end_at).toBeDefined();
+      expect(report.note).toBeUndefined();
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("returns bottleneck_exists: false with a note when no scheduled dependency edges exist", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "A", operation: "arrival", priority: "high" },
+      });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "B", operation: "departure", priority: "medium" },
+      });
+      await generateSchedule(client);
+      const report = await callBottleneck(client);
+      expect(report.bottleneck_exists).toBe(false);
+      expect(report.chain).toEqual([]);
+      expect(report.note).toBe("no scheduled dependency edges");
+      expect(report.start_at).toBeUndefined();
+      expect(report.end_at).toBeUndefined();
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("returns bottleneck_exists: false with a note before any generate_schedule has run", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      const report = await callBottleneck(client);
+      expect(report.bottleneck_exists).toBe(false);
+      expect(report.chain).toEqual([]);
+      expect(report.note).toBeDefined();
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("returns an error envelope for an invalid IANA timezone (no silent UTC fallback)", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      const resp = await client.callTool({
+        name: "analyze_bottleneck",
+        arguments: { timezone: "Mars/Olympus" },
+      });
+      expect(resp.isError).toBe(true);
+      const errors = parseEnvelopeErrors(resp);
+      expect(errors[0]?.reason).toBe("invalid_input");
+      expect(errors[0]?.field).toBe("timezone");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("rejects unknown input fields via the strict schema", async () => {
+    const { client, cleanup } = await connectClient();
+    try {
+      const resp = await client.callTool({
+        name: "analyze_bottleneck",
+        arguments: { unexpected: true },
+      });
+      expect(resp.isError).toBe(true);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("does not recompute on repeated calls — wire bytes identical AND state.schedule unchanged", async () => {
+    const { client, state, cleanup } = await connectClient();
+    try {
+      await client.callTool({
+        name: "submit_flight",
+        arguments: { flight_number: "A", operation: "arrival", priority: "high" },
+      });
+      await client.callTool({
+        name: "submit_flight",
+        arguments: {
+          flight_number: "B",
+          operation: "departure",
+          priority: "medium",
+          dependencies: ["A"],
+        },
+      });
+      await generateSchedule(client);
+      const before = state.schedule;
+      const r1 = await client.callTool({ name: "analyze_bottleneck", arguments: {} });
+      const r2 = await client.callTool({ name: "analyze_bottleneck", arguments: {} });
+      expect(state.schedule).toBe(before);
+      const text1 = r1.content?.[0] && (r1.content[0] as { text?: string }).text;
+      const text2 = r2.content?.[0] && (r2.content[0] as { text?: string }).text;
+      expect(typeof text1).toBe("string");
+      expect(text1).toBe(text2);
     } finally {
       await cleanup();
     }

@@ -14,7 +14,7 @@ Repo: [Altmerian/ai-challenge-vention](https://github.com/Altmerian/ai-challenge
 | 4 | Dependencies in `Scheduler` + Connecting Flight | AFK | #11 | [#12](https://github.com/Altmerian/ai-challenge-vention/issues/12) | - [x] |
 | 5 | `cancel_flight` with auto-regen cascade | AFK | #12 | [#13](https://github.com/Altmerian/ai-challenge-vention/issues/13) | - [x] |
 | 6 | `get_airport_status` + Heavy Hauler | AFK | #11, #12 | [#14](https://github.com/Altmerian/ai-challenge-vention/issues/14) | - [x] |
-| 7 | `analyze_bottleneck` (CPM critical path) | AFK | #12 | [#15](https://github.com/Altmerian/ai-challenge-vention/issues/15) | - [ ] |
+| 7 | `analyze_bottleneck` (CPM critical path) | AFK | #12 | [#15](https://github.com/Altmerian/ai-challenge-vention/issues/15) | - [x] |
 | 8 | Determinism + extra scenarios + Inspector verification | AFK | #13, #14, #15 | [#16](https://github.com/Altmerian/ai-challenge-vention/issues/16) | - [ ] |
 | 9 | `README.md` + `report.md` | AFK | #16 | [#17](https://github.com/Altmerian/ai-challenge-vention/issues/17) | - [ ] |
 
@@ -117,18 +117,18 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 
 ### Slice 7 — `analyze_bottleneck` (CPM critical path) · [#15](https://github.com/Altmerian/ai-challenge-vention/issues/15)
 
-- [ ] `BottleneckAnalyzer` is pure `(schedule, queue) → BottleneckReport`
-- [ ] Longest path by **elapsed minutes** (`last.end − first.start`), not by node count (ADR-0003)
-- [ ] One-node chains do not count → `bottleneck_exists: false` with `note` when no scheduled inter-deps
-- [ ] Cancelled / unscheduled flights excluded from the DAG
-- [ ] Tiebreakers in order: elapsed → node count → earliest first-flight start → lex `flight_number` sequence
-- [ ] `chain` ordered first → last; matches `ScheduleEntry` shape
-- [ ] `cumulative_operation_min` = sum of per-node durations; `cumulative_wait_min = total_elapsed − cumulative_operation` (folds in dependency-buffer **and** resource-contention gaps — see PRD note)
-- [ ] `start_at` / `end_at` rendered via `TimezoneFormatter` when chain exists; omitted otherwise
-- [ ] Deterministic: re-run on same schedule yields byte-identical report
-- [ ] Unit tests: empty queue, no scheduled deps, 2-chain, 3-chain, tiebreak by node count + start + lex, wait-dominated chain (`cumulative_wait_min > 0`), subtree with unscheduled predecessor excluded
-- [ ] Integration test: A→B with large gate turnaround → `bottleneck_exists: true`, `chain_length: 2`, wait math matches
-- [ ] Inspector CLI verification of the bottleneck assertion
+- [x] `BottleneckAnalyzer` is pure `(schedule, queue) → BottleneckReport`
+- [x] Longest path by **elapsed minutes** (`last.end − first.start`), not by node count (ADR-0003)
+- [x] One-node chains do not count → `bottleneck_exists: false` with `note` when no scheduled inter-deps
+- [x] Cancelled / unscheduled flights excluded from the DAG
+- [x] Tiebreakers in order: elapsed → node count → earliest first-flight start → lex `flight_number` sequence
+- [x] `chain` ordered first → last; matches `ScheduleEntry` shape
+- [x] `cumulative_operation_min` = sum of per-node durations; `cumulative_wait_min = total_elapsed − cumulative_operation` (folds in dependency-buffer **and** resource-contention gaps — see PRD note)
+- [x] `start_at` / `end_at` rendered via `TimezoneFormatter` when chain exists; omitted otherwise
+- [x] Deterministic: re-run on same schedule yields byte-identical report
+- [x] Unit tests: empty queue, no scheduled deps, 2-chain, 3-chain, tiebreak by node count + start + lex, wait-dominated chain (`cumulative_wait_min > 0`), subtree with unscheduled predecessor excluded
+- [x] Integration test: A→B with large gate turnaround → `bottleneck_exists: true`, `chain_length: 2`, wait math matches
+- [x] Inspector CLI verification of the bottleneck assertion
 
 ### Slice 8 — Determinism + extra scenarios + Inspector verification · [#16](https://github.com/Altmerian/ai-challenge-vention/issues/16)
 
@@ -163,7 +163,7 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 
 > After closing a slice, record durable cross-slice patterns or footguns that future agents will hit *regardless of which slice they pick* under **Persistent gotchas**, and *only next-slice-actionable* deferrals or reuse-or-roll-your-own choices under **Handoff**. Delete superseded bullets — this is a glanceable view, not an audit log.
 
-### Persistent gotchas (from slices 1–6, still apply)
+### Persistent gotchas (from slices 1–7, still apply)
 
 - **Every new tool gets `z.strictObject(...)` as its `inputSchema`.** Plain `z.object` advertises `additionalProperties: true` and silently accepts unknown fields on the wire.
 - **`exactOptionalPropertyTypes: true` is on.** Don't assign `x: undefined` to optional output keys — conditionally spread (`...(x !== undefined ? { x } : {})`) so JSON serialization omits the key cleanly.
@@ -172,8 +172,7 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 - **Inspector CLI is one-shot per process.** For cross-call scenarios drive the freshly-built server via the SDK's `StdioClientTransport` from a Node script — see `.verification/slice-6-stdio-driver.mjs` for the current pattern. Slice 8 collapses both paths into a single `npm run verify:inspector` command.
 - **All IANA timezone parsing goes through `isValidIanaTimezone` in `config.ts`.** `Intl.DateTimeFormat` silently canonicalizes case-folded names (`Asia/Kolkata` → `Asia/Calcutta`); the helper enforces the exact round-trip. Reuse it from any per-call `timezone` argument — don't re-derive the check.
 - **`Scheduler`, `TimezoneFormatter`, and `airport-status` are pure — keep them clock-free and env-free.** `runSchedulingPass` takes `{ now, timezone }` as an explicit option; the handler injects `new Date()` and the resolved tz. `buildAirportStatus(state)` is a pure projection of `state.queue` / `state.schedule` / `state.config`. Tests pin both for deterministic assertions.
-- **Reuse the zod schemas exported from `mcp-server.ts`** (`ScheduleSnapshotSchema` / `ScheduleEntrySchema` / `UnscheduledEntrySchema`) when wiring `analyze_bottleneck`. Re-deriving the shape risks catalogue drift.
-- **Reuse the helpers in `airport-status.ts`** (`computeRunwayBusyMinutes`, `computeUtilizationPct`, `addMinutesToUtcMinuteIso`, `buildScheduleCompletion`) instead of re-deriving the trailing-separation / one-decimal / UTC-minute math. `atc://runways` and `get_airport_status` already share them; `analyze_bottleneck` should too when it needs UTC-instant arithmetic.
+- **Reuse the helpers in `airport-status.ts`** (`computeRunwayBusyMinutes`, `computeUtilizationPct`, `addMinutesToUtcMinuteIso`, `buildScheduleCompletion`) instead of re-deriving the trailing-separation / one-decimal / UTC-minute math. `atc://runways` and `get_airport_status` already share them. New tools that need UTC-instant arithmetic should too.
 - **`ValidationReason` in `error-envelope.ts` is intentionally narrow** (`invalid_input` · `self_dependency` · `duplicate_flight_number`). Schedule-time reasons (`no_compatible_runway`, `horizon_exceeded`, `dependency_*`) live on `UnscheduledEntry`, not in this envelope — `invalid_input` is what `generate_schedule` returns for an unknown IANA timezone, not `no_compatible_runway`.
 - **`replaceSchedule(snapshot)` is the single state-mutation point after a pass.** It installs the snapshot AND flips every non-cancelled `Flight.state` in lockstep, then rebuilds the flight-number index. Adding a sibling setter that touches `Flight.state` independently would let queue state and schedule state drift; extend `replaceSchedule` instead.
 - **The `dependency_*` reason taxonomy is layered, not OR'd.** Direct missing/cancelled preds → `dependency_missing` / `dependency_cancelled` with `blocking_flight_number` = the offending pred. Cycle members → `dependency_cycle` (no `blocking_flight_number`; `detail` lists members). Everything else downstream — transitive descendants of any of the above, plus descendants of `no_compatible_runway` / `horizon_exceeded` flights — → `dependency_unscheduled` with `blocking_flight_number` = first unscheduled pred in `dependencies` order. The cascade only points one hop back.
@@ -184,17 +183,16 @@ After `#12` lands, the three follow-ups — `#13` (`cancel_flight`), `#14` (`get
 - **To build a pre-pass scheduled baseline in tests, call `runSchedulingPass(state.queue, state.config, options)` + `state.replaceSchedule(baseline)` explicitly.** `AirportState.cancelFlight` only runs a pass on the cancel transition itself, not on submission — tests that need to prove "X was scheduled before the cancel" must establish that state themselves.
 - **"Status read does not recompute" is best asserted with reference equality on `state.schedule`** — JSON-stringify comparisons are necessary but not sufficient (a same-minute rerun could produce byte-identical output yet break the contract). Capture `state.schedule` before the read, assert `state.schedule === beforeRef` after. The slice-6 driver also compares raw `content[0].text` bytes — go through both layers (wire + state) for read-side claims.
 - **Gate `busy_minutes` excludes the trailing buffer; runway `busy_minutes` includes it.** PRD-mandated asymmetry: gate turnaround already covers the gap before the next gate op, while runway separation is a real third constraint. Don't "fix" the gate math by adding a trailing buffer.
+- **`BottleneckAnalyzer` keeps a single best chain per node.** Extension along an edge `u → v` is monotone w.r.t. the full tiebreak comparator (elapsed → node count → earliest start → lex), so the chain ending at `u` that wins on `bestEndingAt[u]` also wins after appending any common `v`. Don't track multiple chains per node — diamond/join cases work with one representative as long as the comparator is total. The diamond test in `tests/bottleneck.test.ts` pins this; the input `predecessors` order does NOT affect the result.
+- **`BottleneckAnalyzer` uses `start_offset_min` ascending as its topological order** — durations are strictly positive and the dependency buffer is ≥ 0, so any scheduled predecessor satisfies `u.start < u.end ≤ v.start` and falls earlier in the sort. Don't bolt on Kahn's algorithm.
 
-### Handoff to slice 7
+### Handoff to slice 8
 
-- **`BottleneckAnalyzer` is pure `(schedule, queue) → BottleneckReport` — no scheduler changes, no I/O, no clock.** Mirror the slice-6 split: put it in `src/bottleneck.ts` with a small dedicated test file (`tests/bottleneck.test.ts`) and only register it from `mcp-server.ts`. Don't grow `mcp-server.ts` with domain logic.
-- **Chain weight is elapsed minutes (`last.end_offset_min − first.start_offset_min`), not node count** — see ADR-0003 and PRD §17. Tiebreakers in strict order: elapsed → node count → earliest first-flight start → lex flight-number sequence. A one-node path is **not** a chain (returns `bottleneck_exists: false` with a `note`).
-- **Restrict the DAG to `scheduled` flights only.** Exclude `cancelled`, `unscheduled` (any reason), and predecessors that didn't make it into the snapshot. The cascade rules from slice 4 already guarantee a clean cut.
-- **`cumulative_wait_min` is intentionally broad** — `total_elapsed_min − cumulative_operation_min` folds in dependency-buffer **and** resource-contention gaps. The PRD note (§ Shared output shapes / BottleneckReport) explicitly says splitting them is not tractable without re-running the scheduler.
-- **For UTC-instant arithmetic on `start_at`/`end_at` of the chain endpoints, reuse `addMinutesToUtcMinuteIso` from `airport-status.ts`** — that's exactly what slice 6 added it for. Don't write a third copy of the minute-roll math. For client-tz rendering use `formatOffsetInZone` from `timezone-formatter.ts`.
-- **`InvalidIanaTimezone` returns `errorEnvelope` with reason `invalid_input`, field `timezone`** — the existing pattern from `generate_schedule` / `cancel_flight` / `get_airport_status`. Plug in by copy of the timezone-check block from any of those handlers.
-- **`analyze_bottleneck` reads `state.schedule` and `state.queue` only — it must NOT recompute.** Same reference-equality + wire-byte assertion pattern as slice 6 applies; the slice-7 stdio driver should follow `.verification/slice-6-stdio-driver.mjs` as the template.
-- **Inspector verification adds one new check from `AGENTS.md`**: `analyze_bottleneck` on the Connecting Flight schedule returns `bottleneck_exists: true` with the expected 2-flight chain (A → B). The full set of brief scenarios + cancel cascade + Heavy Hauler must continue to pass.
+- **`tests/bottleneck.test.ts` and the slice-7 stdio driver already cover the bottleneck-trivial and bottleneck-3-chain extras.** When you build the determinism harness and the ten-extras integration suite, deduplicate against the already-passing tests — fold the missing extras (`reset_state` confirms next `submission_index = 0`, duplicate-after-cancel, self-dependency-rejected) onto the existing patterns instead of re-creating fixtures from scratch.
+- **Collapse the per-slice `.verification/slice-N-stdio-driver.mjs` files into one `npm run verify:inspector` entry point.** The slice-7 driver is the most recent template — it already runs the catalogue check, input validation, the three brief scenarios (Connecting Flight + Morning Rush + Heavy Hauler), determinism, and the `analyze_bottleneck` brief addition. Add the missing AGENTS.md extras (cancel-cascade-without-explicit-generate, reset-state) onto that shape rather than a fresh driver.
+- **Determinism comparison fields are `start_offset_min` / `end_offset_min` / `runway_id` / `gate_id` / `unscheduled[*].reason`.** Wall-clock fields (`generated_at`, `schedule_start_at`, `start_at`, `end_at`) are deliberately excluded — they reflect when the pass ran, not what the pass produced. Use a projection helper before diffing.
+- **CI green = `npm test` runs unit + integration + the new verify:inspector driver in one command.** The current `npm test` runs vitest only; extend the script or add a postscript to drive the stdio harness against `dist/index.js` so a single command catches both layers.
+- **No extras for slice 7 verification deferred** — the catalogue check, input validation, and the bottleneck-on-Connecting-Flight assertion are already in the slice-7 stdio driver. Just merge them, don't duplicate them.
 
 ## Sync convention
 
